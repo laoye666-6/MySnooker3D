@@ -1,0 +1,39 @@
+# Unity 生成目录（体积大且可再生成，不入库）
+[Ll]ibrary/
+[Tt]emp/
+[Oo]bj/
+[Bb]uild/
+[Bb]uilds/
+[Ll]ogs/
+[Uu]ser[Ss]ettings/
+[Mm]emoryCaptures/
+[Rr]ecordings/
+
+# IDE / 系统
+.vs/
+.idea/
+*.csproj
+*.sln
+*.user
+*.pidb
+*.booproj
+*.suo
+*.tmp
+Thumbs.db
+.DS_Store
+
+# Unity 附加产物
+*.unitypackage
+*.apk
+*.aab
+*.unityproj
+crashlytics-build.properties
+sysinfo.txt
+crash-*.log
+
+# 字体备用大文件（代码有优雅回退，不入库以减体积）
+UnityProject/Assets/Resources/Fonts/NotoSansSC.ttf
+UnityProject/Assets/Resources/Fonts/NotoSansCJK-Regular.ttc
+
+# Blender 编辑中间文件
+*.blend1
