@@ -8,6 +8,18 @@
 procedural Blender modeling. Realistic physics, full simplified snooker rules,
 toggleable aiming aids, cinematic intro camera and in-game settings.*
 
+## 📥 下载安装（Android）
+
+[![Download APK](https://img.shields.io/badge/下载_APK-v0.33_约70MB-brightgreen?style=for-the-badge)](https://github.com/laoye666-6/MySnooker3D/releases/latest)
+
+- **直接下载** → **[Snooker3D.apk](https://github.com/laoye666-6/MySnooker3D/releases/download/v0.33/Snooker3D.apk)**（约 70MB）
+- 或前往 [**Releases 页面**](https://github.com/laoye666-6/MySnooker3D/releases) 查看全部版本与更新说明
+- **安装步骤**：下载 APK → 传到手机 → 点击安装；首次安装需在系统设置里允许「安装未知来源应用」
+- **系统要求**：Android 7.0+；支持 arm64-v8a 真机与 x86_64 模拟器（MuMu 等）
+
+> 💡 GitHub 仓库主页只能看到源码文件，安装包放在 **Releases**（右侧栏「Releases」也可进入）。
+> 想从源码自行编译请见下文《从源码构建》。
+
 | 主菜单 | 对局中 | 设置 |
 |---|---|---|
 | ![menu](docs/screenshots/menu.png) | ![gameplay](docs/screenshots/gameplay.png) | ![settings](docs/screenshots/settings.png) |
