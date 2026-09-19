@@ -1,0 +1,43 @@
+【项目上下文导入 —— 双人斯诺克 3D（Unity/Blender/MuMu/GitHub）】
+
+我正在开发一个已基本完成并已开源的项目，以下是压缩上下文。请记住这些信息并在后续问答/工作中使用。
+更完整的细节（全部踩坑记录 18 条、版本史、命令）见同目录 CONTEXT_SUMMARY.md，需要时我会粘贴对应章节。
+
+■ 项目：双人斯诺克 3D 安卓游戏（双人同屏、完整官方斯诺克规则、真实物理、辅助瞄准线可开关、
+  贝塞尔入场运镜、设置界面、单杆分 HUD、147 提示）
+■ 技术栈：Unity 2022.3.62f3c1（IL2CPP，ARM64+X86_64）+ Blender 5.2 脚本化建模 + MuMu 模拟器 adb 实测验收
+■ 当前版本：v0.35（第 35 次迭代），APK 在 E:\Snooker3D\Builds\Snooker3D.apk
+■ 已开源：https://github.com/laoye666-6/MySnooker3D （public / MIT，Release v0.35 带 APK）
+■ 源码母本：E:\Snooker\unity_src\Scripts（10 个 cs，全中文注释）+ unity_src\Editor（3 个）
+■ 工程：E:\Snooker3D（Assets\Scripts 由 sync.bat 从母本同步）
+■ 文档：E:\Snooker\README.md（踩坑 18 条 + 版本记录 v1.0.28~v0.35）
+
+■ 核心架构（三层分离）：
+- SnookerRules.cs = 纯函数规则引擎（TableState + ShotFacts → ShotOutcome，不依赖物理/UI）
+- GameManager.cs = 落地执行（加分/回点/换手/终局）+ 几何判定 IsSnookered()
+- Editor/RuleTest.cs = 44 条离线规则断言；Editor/PhysTest.cs = 物理回归；Editor/BuildGame.cs = 命令行构建
+其余：G.cs(常量) BallController(球) CueController(瞄准/出杆) AimLine(辅助线+指定彩球)
+GameCamera(运镜) UIManager(uGUI 图形+IMGUI 文字) GameSettings(帧率/分辨率/阴影)
+
+■ 关键约束（踩坑精华，改动前必读）：
+1. MuMu 只认 arm64/x86_64 → 必须 IL2CPP；引擎裁剪必须关闭(stripEngineCode=false + link.xml)
+2. 白球不可与棕球同点重生（PhysX 炸膛）；休眠刚体赋速度前必须 WakeUp()
+3. 工程物理资产 m_SimulationMode 必须为 0——编辑器测试代码曾把它持久化导致真机物理全冻，
+   测试代码必须 try/finally 恢复
+4. uGUI 文字在部分机渲染空白 → 文字全用 IMGUI 绘制，中文用内嵌 DroidSansFallback
+5. 低速撞库粘库 = bounceThreshold 太大；设 0.1
+6. uGUI 中心锚定 y 向上 vs 设计坐标 y 向下：pos.y = 540 - 设计y；IMGUI CRect 的 cx 是中心不是边缘
+7. **规则改动必须走 SnookerRules.cs + RuleTest 断言**，不许把判定写进物理/UI 代码
+8. **推送到 GitHub 前必须先 git fetch**（我曾 force push 覆盖了用户网页编辑的提交）
+9. 本机 Bash 是 Git Bash（路径 /e/Snooker）；含中文的 .bat 会闪退，需纯 ASCII；
+   PowerShell 调 gh 时 --jq 含引号会报参数错误，用 --template
+
+■ 构建命令：
+"E:\Program files\2022.3.62f3c1\Editor\Unity.exe" -batchmode -quit -nographics -projectPath "E:\Snooker3D" -executeMethod BuildGame.BuildAndroid -logFile "E:\Snooker\logs\build.log"
+（调试加 -x86only；改版本号在 unity_src\Editor\BuildGame.cs；规则回归换 RuleTest.Run）
+
+■ 已完成：全部玩法闭环 + 完整规则（含指定彩球/Miss 让对手重打/自由球）+ 运镜 + 设置 + HUD + 147 + 图标
+■ 未实现：Miss 累计三次判负、自由球判定的裁判裁量
+■ 你需要做的：等我提出下一步需求；你无法直接读写我的本地文件，需要内容我会粘贴
+
+请确认你已理解以上上下文，我将提出具体任务。
