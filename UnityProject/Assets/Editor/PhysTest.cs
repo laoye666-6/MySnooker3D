@@ -4,7 +4,10 @@
 // 提供两个入口，均为无头批处理运行（不打开界面）：
 //
 // ① PhysTest.Run —— 开球回归测试
-//    复现"白球开球→撞散球堆"全过程，验证整体物理健康度。
+//    复现"白球开球→撞散球堆"的**纯 PhysX 反弹过程**。
+//    ⚠ 边界（别把结论说过头）：编辑器里不执行 MonoBehaviour 的 FixedUpdate/Update，
+//      因此 BallController 的滚动摩擦(RollDecel)、袋口捕获、停判逻辑都不会运行——
+//      本测试只验证刚体碰撞与库边反弹，手感/停判必须上机实测。
 //
 // ② PhysTest.CushionTest —— 库边反弹专项测试（复现/验证"低速粘库"bug）
 //    三个用例，全部只留一颗白球、隐藏其余球，避免干扰：
@@ -22,8 +25,10 @@
 //     -logFile "E:\Snooker\logs\phystest.log"
 //   日志里过滤 [PHYSCUSH]。退出码 0 = 全流程正常。
 //
-// 注意：测试结束必须恢复 SimulationMode.FixedUpdate —— 否则该设置会被编辑器
-// 持久化进 DynamicsManager.asset 并打进 APK，设备上物理完全不步进（历史事故）。
+// 注意：手动步进**必须包在 try/finally 里**恢复 SimulationMode.FixedUpdate —— 否则任何异常
+// 都会让工程停在 Script 模式，退出编辑器时被持久化进 DynamicsManager.asset 并打进 APK，
+// 设备上物理完全不步进（README 踩坑 5，历史真实事故）。v0.34 起两个入口都加了 try/finally，
+// 且 CushionTest 步长改回 0.004s 与运行时 Physics.fixedDeltaTime 一致。
 // =====================================================================================
 using UnityEditor;
 using UnityEditor.SceneManagement;
@@ -51,6 +56,15 @@ public static class PhysTest
         bootGo.AddComponent<Bootstrapper>().Init();
         var gm = GameManager.I;
         L("gm=" + (gm == null ? "NULL" : "ok"));
+        if (gm == null || gm.cue == null)
+        {
+            // 初始化失败就直接收工：否则后面会解引用 null 抛异常，把"恢复物理设置"那步跳过
+            // （这正是必须用 try/finally 的原因）
+            Debug.LogError("[PHYSTEST] Bootstrapper 初始化失败，测试中止（物理设置未被改动）");
+            Debug.Log("[PHYSTEST] === ABORTED ===\n" + Log);
+            EditorApplication.Exit(2);
+            return;
+        }
 
         // 倾倒开球线附近的碰撞体（排查幽灵碰撞体/错位碰撞体）
         foreach (var c in Object.FindObjectsOfType<Collider>())
@@ -63,26 +77,36 @@ public static class PhysTest
 
         var cue = gm.cue;
         L("cue start pos=" + cue.transform.position.ToString("F3"));
-        try { gm.StartGame(); } catch (System.Exception e) { L("StartGame EXC: " + e); }
+
+        // ★ 手动步进整段包在 try/finally 里：中途无论抛什么异常，都必须把 simulationMode
+        //   还原为 FixedUpdate，绝不能让它停在 Script 被写进工程设置并打进包。
         try
         {
+            try { gm.StartGame(); } catch (System.Exception e) { L("StartGame EXC: " + e); }
             Physics.simulationMode = SimulationMode.Script;       // 切手动步进（Script=由代码调 Simulate）
-            gm.Shoot(new Vector3(1f, 0f, 0f), 0.5f);              // 力度 0.5 ≈ 2.58 m/s
-            L("after Shoot velocity=" + cue.Rb.velocity.ToString("F3"));
-        }
-        catch (System.Exception e) { L("Shoot EXC: " + e); }
+            try
+            {
+                gm.Shoot(new Vector3(1f, 0f, 0f), 0.5f);          // 力度 0.5 ≈ 2.58 m/s
+                L("after Shoot velocity=" + cue.Rb.velocity.ToString("F3"));
+            }
+            catch (System.Exception e) { L("Shoot EXC: " + e); }
 
-        float dt = 0.004f;
-        for (int i = 1; i <= 1125; i++)                           // 手动推进 4.5 秒
+            float dt = 0.004f;                                    // 与运行时 fixedDeltaTime 一致
+            for (int i = 1; i <= 1125; i++)                       // 手动推进 4.5 秒
+            {
+                Physics.Simulate(dt);
+                if (i % 40 == 0)
+                    L("t=" + (i * dt).ToString("F2") + " cue=" + cue.transform.position.ToString("F3") +
+                      " v=" + cue.Rb.velocity.ToString("F2"));
+            }
+
+            gm.LogBalls("AFTER-BREAK");
+        }
+        finally
         {
-            Physics.Simulate(dt);
-            if (i % 40 == 0)
-                L("t=" + (i * dt).ToString("F2") + " cue=" + cue.transform.position.ToString("F3") +
-                  " v=" + cue.Rb.velocity.ToString("F2"));
+            Physics.simulationMode = SimulationMode.FixedUpdate;  // 还原工程物理设置（必经路径）
+            L("simulationMode restored=" + Physics.simulationMode);
         }
-
-        gm.LogBalls("AFTER-BREAK");
-        Physics.simulationMode = SimulationMode.FixedUpdate;      // 还原工程物理设置
         Debug.Log("[PHYSTEST] === DONE ===\n" + Log);
         EditorApplication.Exit(0);
     }
@@ -97,6 +121,13 @@ public static class PhysTest
         var bootGo = new GameObject("Boot");
         bootGo.AddComponent<Bootstrapper>().Init();
         var gm = GameManager.I;
+        if (gm == null || gm.cue == null)
+        {
+            Debug.LogError("[PHYSCUSH] Bootstrapper 初始化失败，测试中止（物理设置未被改动）");
+            Debug.Log("[PHYSCUSH] === ABORTED ===\n" + Log);
+            EditorApplication.Exit(2);
+            return;
+        }
         gm.StartGame();                                           // 布球
 
         var cue = gm.cue;
@@ -106,16 +137,24 @@ public static class PhysTest
 
         L("bounceThreshold=" + Physics.bounceThreshold.ToString("F3") +
           "  (球撞库法向速度低于它时不反弹 → 粘库)");
-        Physics.simulationMode = SimulationMode.Script;       // 切手动步进
-        float dt = 0.005f;
 
-        // 三个用例：位置 / 速度（见文件头说明）
-        // B、C 的起点放在距库边 0.53m 处：太远的话低速球会被台呢摩擦减到停、碰不到库
-        RunCase("A-fast-normal", new Vector3(1.2f, 0, 0),    new Vector3(1.2f, 0, 0),    dt, cue);
-        RunCase("B-slow-normal", new Vector3(1.2f, 0, 0),    new Vector3(0.35f, 0, 0),   dt, cue);
-        RunCase("C-grazing",     new Vector3(1.2f, 0, -0.4f), new Vector3(0.35f, 0, -0.2f), dt, cue);
+        // ★ 同样包 try/finally：中途异常也必须还原物理设置（见文件头注意事项）
+        try
+        {
+            Physics.simulationMode = SimulationMode.Script;       // 切手动步进
+            float dt = 0.004f;                                    // 与运行时 fixedDeltaTime 一致（原 0.005 不符）
 
-        Physics.simulationMode = SimulationMode.FixedUpdate;      // 还原工程物理设置
+            // 三个用例：位置 / 速度（见文件头说明）
+            // B、C 的起点放在距库边 0.53m 处：太远的话低速球会被台呢摩擦减到停、碰不到库
+            RunCase("A-fast-normal", new Vector3(1.2f, 0, 0),    new Vector3(1.2f, 0, 0),    dt, cue);
+            RunCase("B-slow-normal", new Vector3(1.2f, 0, 0),    new Vector3(0.35f, 0, 0),   dt, cue);
+            RunCase("C-grazing",     new Vector3(1.2f, 0, -0.4f), new Vector3(0.35f, 0, -0.2f), dt, cue);
+        }
+        finally
+        {
+            Physics.simulationMode = SimulationMode.FixedUpdate;      // 还原工程物理设置（必经路径）
+            L("simulationMode restored=" + Physics.simulationMode);
+        }
         Debug.Log("[PHYSCUSH] === DONE ===\n" + Log);
         EditorApplication.Exit(0);
     }

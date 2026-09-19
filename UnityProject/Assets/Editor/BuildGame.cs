@@ -46,9 +46,9 @@ public static class BuildGame
             Debug.LogWarning("[SNOOKER] icon.png not found, using default icon");
         PlayerSettings.companyName = "SnookerLab";
         PlayerSettings.productName = "Snooker3D";
-        // 版本 0.33：对外显示的迭代版本号（第 33 次迭代）；versionCode 递增供安装覆盖
-        PlayerSettings.bundleVersion = "0.33";
-        PlayerSettings.Android.bundleVersionCode = 33;
+        // 版本 0.34：对外显示的迭代版本号（第 34 次迭代）；versionCode 递增供安装覆盖
+        PlayerSettings.bundleVersion = "0.35";
+        PlayerSettings.Android.bundleVersionCode = 35;
 
         // ★ 必须先切构建目标再写 Android 设置！
         //   顺序反了的话切换目标会把 Android 专属设置（架构/后端等）重置为默认，
@@ -81,6 +81,35 @@ public static class BuildGame
         // 图形 API 强制 GLES3：模拟器的 Vulkan 兼容层不稳定，GLES3 最稳
         PlayerSettings.SetUseDefaultGraphicsAPIs(BuildTarget.Android, false);
         PlayerSettings.SetGraphicsAPIs(BuildTarget.Android, new[] { GraphicsDeviceType.OpenGLES3 });
+
+        // ---- 2b. 播放器设置读回校验（v0.34）----
+        // 上面这些设置若静默失败，旧版只会留一条 warning 然后照样 Exit(0)——打出一个装不上
+        // 或跑不动的包（历史上就出过"只含 armeabi-v7a 被 MuMu 拒装"）。所以设置完立即读回。
+        var apis = PlayerSettings.GetGraphicsAPIs(BuildTarget.Android);
+        var icons = PlayerSettings.GetIcons(UnityEditor.Build.NamedBuildTarget.Android, IconKind.Application);
+        int iconCount = icons != null ? icons.Length : 0;
+        string pkg = PlayerSettings.GetApplicationIdentifier(BuildTargetGroup.Android);
+        Debug.Log("[SNOOKER] verify version=" + PlayerSettings.bundleVersion +
+                  " versionCode=" + PlayerSettings.Android.bundleVersionCode +
+                  " pkg=" + pkg +
+                  " arch=" + PlayerSettings.Android.targetArchitectures +
+                  " backend=" + PlayerSettings.GetScriptingBackend(BuildTargetGroup.Android) +
+                  " gles3=" + (System.Array.IndexOf(apis, GraphicsDeviceType.OpenGLES3) >= 0) +
+                  " stripEngineCode=" + PlayerSettings.stripEngineCode +
+                  " icons=" + iconCount);
+
+        bool bad = false;
+        if (PlayerSettings.bundleVersion != "0.35") { Debug.LogError("[SNOOKER] bundleVersion 未生效"); bad = true; }
+        if (PlayerSettings.Android.bundleVersionCode < 35) { Debug.LogError("[SNOOKER] versionCode 未生效"); bad = true; }
+        if (pkg != "com.snookerlab.snooker3d") { Debug.LogError("[SNOOKER] 包名未生效: " + pkg); bad = true; }
+        if (PlayerSettings.GetScriptingBackend(BuildTargetGroup.Android) != ScriptingImplementation.IL2CPP)
+        { Debug.LogError("[SNOOKER] 脚本后端不是 IL2CPP（MuMu 会拒装）"); bad = true; }
+        if (PlayerSettings.stripEngineCode) { Debug.LogError("[SNOOKER] 引擎裁剪仍开着（会剥掉 Collider）"); bad = true; }
+        if (System.Array.IndexOf(apis, GraphicsDeviceType.OpenGLES3) < 0)
+        { Debug.LogError("[SNOOKER] 图形 API 未包含 GLES3"); bad = true; }
+        if (icon != null && (iconCount == 0 || System.Array.IndexOf(icons, icon) < 0))
+            Debug.LogWarning("[SNOOKER] 图标读回未命中预期贴图（count=" + iconCount + "），建议开包核对 res/*.png");
+        if (bad) { Debug.Log("[SNOOKER] === ABORTED: 播放器设置未生效，拒绝打出坏包 ==="); EditorApplication.Exit(3); return; }
 
         // ---- 3. 打包 ----
         string output = @"E:\Snooker3D\Builds\Snooker3D.apk";

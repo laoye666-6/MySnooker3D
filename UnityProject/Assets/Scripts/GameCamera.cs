@@ -49,6 +49,12 @@ public class GameCamera : MonoBehaviour
         var gm = GameManager.I;
         if (gm == null || gm.cue == null) return;      // 场景未就绪时不动
 
+        // v0.34：一旦离开菜单（开始游戏），立即把入场计时器补满。否则玩家在菜单前 3.6s 内点了
+        // "开始游戏"，introT 会冻结在中途，之后回到结算画面时又从那里重播入场弧线——
+        // 相机会瞬间吸附到弧线中段（硬切），正是"入场运镜"要避免的。
+        if (gm.state != GameManager.State.Menu && gm.state != GameManager.State.GameOver)
+            introT = IntroDur;
+
         Vector3 desired, look;
         if (gm.state == GameManager.State.Menu || gm.state == GameManager.State.GameOver)
         {
@@ -66,8 +72,10 @@ public class GameCamera : MonoBehaviour
                 transform.LookAt(lookAt);
                 return;
             }
-            // ---- 菜单待机：绕注视点缓慢漂移 ±6°，相位从动画结束起算（无缝衔接）----
-            float idle = Mathf.Max(0f, Time.timeSinceLevelLoad - IntroDur);
+            // ---- 菜单待机：绕注视点缓慢漂移 ±6°，相位从"入场动画结束"起算 ----
+            // v0.34：用自累加的 introT 而非 Time.timeSinceLevelLoad —— 后者含 Bootstrapper
+            // 建场景耗时(0.1~0.5s)，入场结束瞬间 idle 已经非 0，衔接处会有一小段跳变。
+            float idle = Mathf.Max(0f, introT - IntroDur);
             float ang = Mathf.Sin(idle * 0.15f) * 6f;
             desired = DemoLook + Quaternion.Euler(0f, ang, 0f) * (DemoPos - DemoLook);
             look = DemoLook;

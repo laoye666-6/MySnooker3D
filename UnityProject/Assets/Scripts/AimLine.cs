@@ -25,6 +25,14 @@ public class AimLine : MonoBehaviour
     private Material mainMat, objMat, deflMat;    // 各线的材质（obj 颜色随目标球实时变化）
 
     /// <summary>
+    /// 当前准线指向的那颗球（null = 指向空处/库边）。
+    /// v0.35 新增：球 on 为彩球时，规则要求击球方【指定】打哪一颗（Rule 3(f)(i)(b)）——
+    /// 用"准线指向的球"作为指定对象，玩家无需额外操作即可表达意图，
+    /// 同时保留规则语义（若实际首碰与指定不符即为犯规）。
+    /// </summary>
+    public BallController AimedBall { get; private set; }
+
+    /// <summary>
     /// 初始化：由 Bootstrapper 调用一次。传入幽灵球材质（半透明白）。
     /// 三条 LineRenderer 各 2 个顶点、宽度 7mm、世界坐标模式、不投影不接收阴影。
     /// </summary>
@@ -125,6 +133,7 @@ public class AimLine : MonoBehaviour
 
         if (hit != null && best <= tc)
         {
+            AimedBall = hit;                                      // v0.35：记录准线指向的球（供"指定彩球"用）
             // ---- 命中球：幽灵球摆接触点，画目标球走向与白球分离方向 ----
             Vector3 gp = p + dir * best;                          // 接触瞬间白球中心（幽灵球位置）
             Set(main, p, gp);                                     // 主准线
@@ -145,6 +154,7 @@ public class AimLine : MonoBehaviour
         }
         else if (tc < float.MaxValue)
         {
+            AimedBall = null;                                     // v0.35：指向库边 → 未指定任何球
             // ---- 命中库边：画到撞点 + 0.5m 反射方向短线 ----
             Vector3 hp = p + dir * tc;
             Set(main, p, hp);
@@ -156,6 +166,7 @@ public class AimLine : MonoBehaviour
         }
         else
         {
+            AimedBall = null;                                     // v0.35：指向空处 → 未指定任何球
             // ---- 什么都没命中：画 3 米方向指示线 ----
             Set(main, p, p + dir * 3f);
             obj.positionCount = 0;

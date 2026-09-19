@@ -5,14 +5,16 @@
 //   Menu(主菜单) --点击开始--> Aiming(瞄准) --出杆--> Rolling(滚动中)
 //        --所有球停--> EvaluateShot(结算) --返回--> Aiming / GameOver(结算画面)
 //
-// 规则要点（简化斯诺克）：
-//   - 目标球状态由三个变量共同描述：colorsPhase / onColor / targetColor
-//       colorsPhase=false, onColor=false → 目标"红球"（OnRed == true）
-//       colorsPhase=false, onColor=true  → 目标"任意彩球"（刚进了一颗红球）
-//       colorsPhase=true                 → 目标"指定彩球"（按黄绿咖啡蓝粉黑顺序清彩）
-//   - 犯规判罚：让对手得 max(4, 涉及球的最高分值)，常见情形都在 EvaluateShot 里
-//   - 犯规/未进球 → 换人；合法进球 → 同一人继续打
-//   - 白球落袋 → 重置回开球区；彩球误落/红球阶段进彩 → 重置回置球点
+// 规则要点（v0.34 起为完整斯诺克规则；判定集中在 SnookerRules.cs，本文件只负责落地）：
+//   - 球 on 由三个变量推导（SnookerRules.BallOn）：
+//       colorsPhase=false, freeColorPending=false → 打红球（OnRed == true）
+//       colorsPhase=false, freeColorPending=true  → 打任意彩球（刚进红球 / 最后一红之后那颗）
+//       colorsPhase=true                          → 按黄绿咖啡蓝粉黑升序打指定彩球
+//   - Rule 10.3：只要台面还有红球，换手后的接台方永远以红球为球 on（v0.33 漏了这条复位）
+//   - 犯规罚分：max(4, 球 on 分值, 涉及球分值)；连续两杆打红 7 分；同杆多犯规取最高
+//   - 犯规杆打进的球一律不计分；彩球回点（高分优先）、红球永不回点；白球落袋回开球区
+//   - Rule 4：只剩黑球时第一次得分或犯规即终局，仅当比分打平时重置黑球继续
+//   - 未实现（后续可加）：指定彩球 nomination、自由球 Free Ball、犯规与未击到 Foul and Miss、让对手重打
 //
 // 调试日志：所有关键节点都打 [SNOOKER] 前缀日志，可 adb logcat -s Unity 过滤查看。
 // =====================================================================================
@@ -50,10 +52,17 @@ public class GameManager : MonoBehaviour
     // ---------------------------------------------------------------------------------
     // 目标球状态（三者组合决定当前"该打什么球"，见文件头说明）
     // ---------------------------------------------------------------------------------
-    public bool onColor;                          // 红球阶段：刚打进红球，下一杆打任意彩球
+    public bool freeColorPending;                 // "任意彩球"待打（刚进红球 / 最后一红之后那颗仍待打）
     public bool colorsPhase;                      // 是否已进入清彩阶段（台面无红球后）
     public BallKind targetColor = BallKind.Yellow; // 清彩阶段当前要打的彩球（按 ColorOrder 推进）
     public int redsLeft = 15;                     // 台面剩余红球数（每次结算后重算，HUD 显示用）
+
+    // ---- v0.35：指定彩球 / 自由球 / 让对手重打 ----
+    [HideInInspector] public bool freeBallActive;   // 本杆为自由球（犯规后被斯诺克，接台方获资格）
+    [HideInInspector] public BallKind nominatedColor = BallKind.Black; // 球 on 为彩球时指定的球
+    [HideInInspector] public bool nominatedSet;     // 是否已指定（准线指向彩球即为指定）
+    [HideInInspector] public bool canReplay;        // 上一杆判 Miss → 接台方可要求犯规方重打
+    private int missCount;                          // 本局连续 Miss 次数（仅日志，未实现三次判负）
 
     // ---------------------------------------------------------------------------------
     // 单杆内部记录（每次 Shoot 清空，结算 EvaluateShot 消费）
@@ -64,6 +73,7 @@ public class GameManager : MonoBehaviour
     private float rollTimer;             // 本杆已滚动秒数（超 18 秒强制结算，防死等）
     private float shotMaxY;              // 本杆期间所有球心最高高度（诊断用：>0.09 说明球飞起来了）
     private Vector3[] aimSnapshot;       // 进入瞄准时的全部球位快照（防暂停丢位置，见 RestoreSnapshot）
+    private bool shotWasSnookered;       // v0.35：出杆瞬间是否被斯诺克（决定该杆是否判 Miss）
 
     // ---- 红黑连击追踪（147 满分提示用）----
     // pairStreak：本轮连续"红→黑"交替的套数；lastPotKind：本轮上一颗合法落袋的球；
@@ -74,7 +84,7 @@ public class GameManager : MonoBehaviour
     private bool max147Shown;
 
     /// 当前目标是否为"红球"：不在清彩阶段、且上一杆没打进红球。
-    public bool OnRed { get { return !colorsPhase && !onColor; } }
+    public bool OnRed { get { return !colorsPhase && !freeColorPending; } }
 
     void Awake() { Init(); }
 
@@ -104,9 +114,13 @@ public class GameManager : MonoBehaviour
         breakScore[0] = breakScore[1] = 0;               // 单杆分清零
         pairStreak = 0; lastPotKind = null; max147Shown = false;
         cur = 0;                                         // 玩家 1 先手
-        onColor = false;
+        freeColorPending = false;
         colorsPhase = false;
         targetColor = BallKind.Yellow;                   // 清彩阶段从黄球开始（先占位，进清彩才用）
+        freeBallActive = false;                          // v0.35
+        nominatedSet = false;
+        canReplay = false;
+        missCount = 0;
         PlaceAllBalls();
         pottedThisShot.Clear();
         ui.ShowMenu(false);
@@ -218,6 +232,8 @@ public class GameManager : MonoBehaviour
     {
         if (state != State.Aiming) return;
         if (SnapshotBroken()) RestoreSnapshot();          // 暂停导致的球位异常先修复
+        // v0.35：记录"出杆瞬间是否被斯诺克"，供结算时判定 Miss（Rule 11(b)）
+        shotWasSnookered = IsSnookered();
         state = State.Rolling;
         rollTimer = 0f;
         firstHit = null;
@@ -274,6 +290,9 @@ public class GameManager : MonoBehaviour
     // ---------------------------------------------------------------------------------
     void Update()
     {
+        // v0.35：瞄准阶段持续更新"指定彩球"（准线指向哪颗彩球就指定哪颗，Rule 3(f)(i)(b)）
+        if (state == State.Aiming) UpdateNomination();
+
         if (state != State.Rolling) return;
         rollTimer += Time.deltaTime;
         CheckPockets();
@@ -362,113 +381,67 @@ public class GameManager : MonoBehaviour
     }
 
     // =================================================================================
-    // 单杆结算（本游戏规则引擎的核心）：
-    //   输入：firstHit（首触球）、pottedThisShot（本杆落袋清单）、cushionContact
-    //   输出：加减分 → 重置落袋球 → 换人/连续 → 推进目标球 → 回到 Aiming
+    // 单杆结算（v0.34：规则判定交给纯引擎 SnookerRules，本方法只负责"落地"）
+    //   输入：firstHit / pottedThisShot / cushionContact（出杆期间累积的事实）
+    //   过程：构造"出杆时刻台面状态 + 本杆事实" → SnookerRules.Evaluate → 结算结果
+    //   落地：加分 → 147 连击 → 彩球回点（高分优先）→ 状态推进 → 终局/换手 → 回到 Aiming
     //
-    // 判罚顺序：
-    //   ① 首触犯规（没碰到球 / 先碰错球）——注意 all 判定基于"出杆时"的目标快照
-    //   ② 逐个检查落袋球：目标球合法得分；非目标球犯规（分值取 max(4, 球分值)）
-    //   ③ 白球落袋固定至少 +4
-    //   ④ 犯规只让分不加自己分；合法进球才计入自己得分
+    // 为什么改成这样：旧版把规则判断散在这里，只能在模拟器上真打才能验证，结果"清彩阶段
+    // 犯规落袋导致一局永远打不完"这类致命规则错误一直没被发现。现在规则是纯函数，
+    // 由 Editor/RuleTest.cs 离线断言（见该文件）。规则依据见 SnookerRules.cs 文件头。
     // =================================================================================
     void EvaluateShot()
     {
-        // 快照"出杆时刻"的目标状态：结算过程中 redsLeft/onColor 会被推进，不能混用
-        bool wasOnRed = OnRed;
-        bool wasColors = colorsPhase;
-        BallKind wasTarget = targetColor;
-
         Debug.Log("[SNOOKER] SHOTDONE maxY=" + shotMaxY.ToString("F3") +
                   (shotMaxY > 0.09f ? "  <<< BALLS FLYING" : ""));   // 诊断：球飞太高说明物理异常
 
-        int foulPts = 0;        // 本杆犯规让分（0 = 无犯规）
-        string reason = null;   // 犯规原因（HUD 文案用，只记第一条）
+        // ---- ① 出杆时刻的台面状态（快照）与本杆事实 ----
+        var pre = new TableState();
+        pre.colorsPhase = colorsPhase;
+        pre.freeColorPending = freeColorPending;
+        pre.redsLeft = redsLeft;
+        pre.colorsOnTable = ColorsOnTable();
+        pre.freeBallActive = freeBallActive;               // v0.35
 
-        // ---- ① 首触判定 ----
-        if (firstHit == null) { foulPts = 4; reason = cushionContact ? "先碰库边" : "未击中球"; }
-        else if (wasOnRed && firstHit.Value != BallKind.Red) { foulPts = Mathf.Max(4, G.Value(firstHit.Value)); reason = "未先击中红球"; }
-        else if (!wasColors && !wasOnRed && firstHit.Value == BallKind.Red) { foulPts = 4; reason = "不应击打红球"; }
-        else if (wasColors && firstHit.Value != wasTarget) { foulPts = Mathf.Max(4, G.Value(firstHit.Value)); reason = "应先击中" + G.CnName(wasTarget); }
+        var facts = new ShotFacts();
+        facts.hitNothing = !firstHit.HasValue;
+        facts.cushionContact = cushionContact;
+        facts.firstHit = firstHit.HasValue ? firstHit.Value : BallKind.Red;
+        facts.potted = pottedThisShot.Select(b => b.kind).ToArray();
+        facts.nominated = nominatedColor;                  // v0.35：本杆指定的彩球
+        facts.nominatedSet = nominatedSet;
+        facts.snookered = shotWasSnookered;                // v0.35：出杆时是否被斯诺克（Miss 判定用）
 
-        // ---- ② 落袋球逐一判定 ----
-        int legalPts = 0;                                // 本杆合法得分（犯规时全部作废）
-        bool pottedRed = false, pottedColor = false, blackDownLegally = false;
-        var respots = new List<BallController>();        // 需要重置回台面的球（白球除外）
+        ShotOutcome oc = SnookerRules.Evaluate(pre, facts, scores[cur], scores[1 - cur]);
 
-        foreach (var b in pottedThisShot)
+        // ---- ② 计分：犯规让对手、合法归自己（Rule 10 / Rule 11(e)）----
+        scores[cur] += oc.scoreDeltaStriker;
+        scores[1 - cur] += oc.scoreDeltaOpponent;
+        if (oc.foulPts > 0)
         {
-            if (b.kind == BallKind.Cue)
-            {
-                foulPts = Mathf.Max(foulPts, 4);         // 白球落袋至少罚 4
-                if (reason == null) reason = "白球落袋";
-                continue;
-            }
-            if (wasOnRed)                                // 目标是红球阶段
-            {
-                if (b.kind == BallKind.Red) { legalPts += 1; pottedRed = true; }   // 红球 +1（可多颗）
-                else { foulPts = Mathf.Max(foulPts, G.Value(b.kind)); if (reason == null) reason = "误落" + G.CnName(b.kind); respots.Add(b); }
-            }
-            else if (!wasColors)                         // 目标是"任意彩球"
-            {
-                if (b.kind == BallKind.Red) { foulPts = Mathf.Max(foulPts, 4); if (reason == null) reason = "不应击落红球"; }
-                else { legalPts += G.Value(b.kind); pottedColor = true; respots.Add(b); }  // 彩球得分并回点
-            }
-            else                                         // 清彩阶段：只能进 wasTarget 这一颗
-            {
-                if (b.kind == wasTarget)
-                {
-                    legalPts += G.Value(b.kind);
-                    pottedColor = true;
-                    if (b.kind == BallKind.Black) blackDownLegally = true;   // 黑球合法落袋 = 终局
-                }
-                else
-                {
-                    foulPts = Mathf.Max(foulPts, G.Value(b.kind));
-                    if (reason == null) reason = "误落" + G.CnName(b.kind);
-                    respots.Add(b);                      // 清彩阶段误落的彩球也要回点
-                }
-            }
-        }
-
-        redsLeft = balls.Count(b => !b.potted && b.kind == BallKind.Red);   // 重算台面红球数
-        bool foul = foulPts > 0;
-
-        // ---- ③ 计分：犯规让对手，合法归自己 ----
-        if (foul)
-        {
-            scores[1 - cur] += foulPts;
-            ui.ShowMsg("犯规！" + names[1 - cur] + " +" + foulPts + "（" + reason + "）", 3f);
-            Debug.Log("[SNOOKER] FOUL +" + foulPts + " to P" + (2 - cur) + " (" + reason + ")");
+            ui.ShowMsg("犯规！" + names[1 - cur] + " +" + oc.foulPts + "（" + oc.reason + "）", 3f);
+            Debug.Log("[SNOOKER] FOUL +" + oc.foulPts + " to P" + (2 - cur) + " (" + oc.reason + ")");
         }
         else
         {
-            scores[cur] += legalPts;
-            ui.ShowMsg(legalPts > 0 ? names[cur] + " +" + legalPts : "未进球，交换击球权", 2.2f);
-            Debug.Log("[SNOOKER] SCORE p" + (cur + 1) + " +" + legalPts);
+            ui.ShowMsg(oc.legalPts > 0 ? names[cur] + " +" + oc.legalPts : "未进球，交换击球权", 2.2f);
+            Debug.Log("[SNOOKER] SCORE p" + (cur + 1) + " +" + oc.legalPts);
         }
 
-        // ---- 单杆分与红黑连击（147 满分提示）追踪 ----
-        // 犯规或空杆：单杆结束、连击清零；合法得分：单杆累加，并按"红→黑"交替节奏
-        // 统计连击套数，凑满 5 套且本轮未提示过则弹出 147 满分提示横幅。
-        if (foul || legalPts == 0)
+        // ---- ③ 单杆分与红黑连击（147 提示）----
+        // 新规则下"完成一套红黑"是可判定的事实：进红记红杆，球 on 为彩球时进黑即完成一套。
+        if (oc.foulPts > 0 || oc.legalPts == 0)
         {
             breakScore[cur] = 0;
             pairStreak = 0; lastPotKind = null; max147Shown = false;
         }
         else
         {
-            breakScore[cur] += legalPts;
-            foreach (var b in pottedThisShot)
-            {
-                if (b.kind == BallKind.Cue) continue;
-                if (b.kind == BallKind.Red && lastPotKind != BallKind.Red)
-                    lastPotKind = BallKind.Red;                              // 红杆（延续红黑节奏）
-                else if (b.kind == BallKind.Black && lastPotKind == BallKind.Red)
-                { lastPotKind = BallKind.Black; pairStreak++; }              // 完成一套红黑
-                else
-                { pairStreak = 0; max147Shown = false; }                     // 偏离路线（其它彩球/双红等）
-            }
+            breakScore[cur] += oc.legalPts;
+            if (oc.pottedRed && !oc.pottedColor) lastPotKind = BallKind.Red;      // 打进红球 → 红杆
+            else if (oc.pottedColor && oc.pottedColorKind == BallKind.Black && lastPotKind == BallKind.Red)
+            { lastPotKind = BallKind.Black; pairStreak++; }                        // 红→黑，完成一套
+            else { pairStreak = 0; lastPotKind = null; max147Shown = false; }       // 偏离红黑节奏
             if (pairStreak >= 5 && !max147Shown)
             {
                 max147Shown = true;
@@ -477,49 +450,235 @@ public class GameManager : MonoBehaviour
             }
         }
 
-        // ---- ④ 重置球：误落彩球回置球点；白球落袋回开球区 ----
-        foreach (var b in respots) RespotColor(b);
+        // ---- ④ 彩球回点（Rule 7(e)：多颗同时回点时高分优先）；自由球红球回点；
+        //         白球落袋回开球区 ----
+        foreach (var k in oc.respotColors)
+        {
+            var rb = BallOf(k);
+            if (rb != null) RespotColor(rb);
+        }
+        foreach (var k in oc.respotReds)              // v0.35：自由球情形被打进的红球也要回点（Rule 12）
+        {
+            var rb = BallOf(k);
+            if (rb != null) RespotRed(rb);
+        }
         if (cue.potted) RespotCue();
 
-        // ---- ⑤ 黑球终局/平分决胜 ----
-        if (wasColors && blackDownLegally)
+        // ---- ⑤ 状态推进：剩余红球 / 阶段 / 清彩目标 ----
+        int recount = balls.Count(b => !b.potted && b.kind == BallKind.Red);
+        if (recount != pre.redsLeft - oc.redsPotted)
+            Debug.LogWarning("[SNOOKER] redsLeft mismatch recount=" + recount +
+                             " rule=" + (pre.redsLeft - oc.redsPotted));
+        redsLeft = recount;
+        colorsPhase = oc.nextColorsPhase;
+        freeColorPending = oc.nextFreeColorPending;
+        targetColor = oc.nextTargetColor;
+
+        // ---- ⑤b 自由球资格（Rule 12）：犯规 + 接台方被斯诺克 → 下一位击球方可打自由球 ----
+        // 资格归属于"即将接手的那一方"，因此在换手后才生效（见下方换手分支）。
+        bool earnedFreeBall = oc.foulPts > 0 && IsSnookered();
+
+        // ---- ⑤c 犯规与未击到（Rule 11(b)）：判 Miss 时接台方可要求犯规方从当前球位重打 ----
+        if (oc.isMiss)
         {
-            if (scores[0] != scores[1]) { UpdateHud(); GameOver(); return; }   // 分出胜负 → 结束
-            RespotColor(balls.First(b => b.kind == BallKind.Black));           // 平分 → 黑球回点继续
+            missCount++;
+            Debug.Log("[SNOOKER] MISS called (连续 " + missCount + " 次)");
+        }
+        else if (oc.foulPts > 0 || oc.legalPts > 0) missCount = 0;
+
+        // ---- ⑥ 只剩黑球：第一次得分或犯规即终局；仅当打平时重置黑球继续（Rule 4）----
+        if (oc.frameOver) { UpdateHud(); GameOver(); return; }
+        if (oc.respotBlackTie)
+        {
+            var black = BallOf(BallKind.Black);
+            if (black != null) RespotColor(black);
             RespotCue();
             ui.ShowMsg("平分！重置黑球决胜", 3f);
+            Debug.Log("[SNOOKER] RESPOTTED BLACK (tie)");
         }
 
-        // ---- ⑥ 推进目标球与击球权 ----
-        if (!foul && (pottedRed || pottedColor))
+        // ---- ⑦ 换手 ----
+        freeBallActive = false;                          // v0.35：自由球资格只在下一杆有效
+        canReplay = false;
+        if (oc.handover)
         {
-            if (!colorsPhase)
+            cur = 1 - cur;
+            breakScore[cur] = 0;                    // 新一轮击球权，单杆分从零起算
+            pairStreak = 0; lastPotKind = null; max147Shown = false;
+            // 新接台方若满足"犯规 + 被斯诺克"，获得自由球资格（Rule 12）
+            if (earnedFreeBall)
             {
-                if (pottedRed) onColor = true;                 // 进了红球 → 下杆打任意彩
-                else
-                {
-                    onColor = false;                           // 进了彩球 → 回到打红球
-                    if (redsLeft == 0) { colorsPhase = true; targetColor = BallKind.Yellow; } // 红球清完 → 清彩阶段
-                }
+                freeBallActive = true;
+                ui.ShowMsg(names[cur] + " 获得自由球", 3f);
+                Debug.Log("[SNOOKER] FREE BALL granted to P" + (cur + 1));
             }
-            else if (!blackDownLegally)
+            // 判 Miss → 接台方可要求犯规方重打（Rule 11(b)）；本作提供按钮由玩家决定
+            if (oc.isMiss)
             {
-                // 清彩阶段合法进球 → 目标推进到下一颗（黑球之后无下一颗，由终局分支处理）
-                int idx = System.Array.IndexOf(G.ColorOrder, targetColor);
-                targetColor = G.ColorOrder[Mathf.Min(idx + 1, G.ColorOrder.Length - 1)];
+                canReplay = true;
+                ui.ShowReplayOption();
+                Debug.Log("[SNOOKER] REPLAY option offered");
             }
-            // 合法进球：同一玩家继续击球（cur 不变）
         }
         else
         {
-            cur = 1 - cur;                                     // 犯规/未进球 → 换人
-            pairStreak = 0; lastPotKind = null; max147Shown = false;   // 新一轮击球权，连击从零开始
-            // 换人瞬间若红球恰好清完（无论是否本杆打进）也切清彩阶段
-            if (!colorsPhase && redsLeft == 0) { colorsPhase = true; targetColor = BallKind.Yellow; onColor = false; }
+            missCount = 0;                          // 合法得分则 Miss 计数清零
         }
 
         UpdateHud();
         EnterAim();
+    }
+
+    /// <summary>
+    /// v0.35：让对手重打（Rule 11(b) 的 (b) 选项）。由 UI 的"让对手重打"按钮触发。
+    /// 规则语义：接台方放弃自己的击球权，要求犯规方从【当前球位】再打一次；
+    /// 因此只需要把击球权换回给犯规方，球位保持不动（不重新摆球）。
+    /// 注意：单杆分与 147 连击在犯规时已经清零，这里不再处理。
+    /// </summary>
+    public void RequestReplay()
+    {
+        if (!canReplay || state != State.Aiming) return;
+        canReplay = false;
+        cur = 1 - cur;                                  // 把击球权交回犯规方
+        Debug.Log("[SNOOKER] REPLAY requested → P" + (cur + 1) + " plays again from current position");
+        ui.ShowMsg("要求 " + names[cur] + " 重打", 2.5f);
+        UpdateHud();
+        EnterAim();
+    }
+
+    /// <summary>
+    /// v0.35：玩家放弃自由球资格（Rule 12 允许选择"不打自由球"）。
+    /// 放弃后按真实球 on 继续，只是不再享有"任意球当球 on"的便利。
+    /// </summary>
+    public void DeclineFreeBall()
+    {
+        if (!freeBallActive || state != State.Aiming) return;
+        freeBallActive = false;
+        Debug.Log("[SNOOKER] FREE BALL declined");
+        UpdateHud();
+    }
+
+    /// 台面上仍在的彩球（黄..黑）：供规则引擎推导"清彩目标"与"是否只剩黑球"。
+    BallKind[] ColorsOnTable()
+    {
+        var list = new List<BallKind>();
+        foreach (var k in G.ColorOrder)
+            if (balls.Any(b => b.kind == k && !b.potted)) list.Add(k);
+        return list.ToArray();
+    }
+
+    // =================================================================================
+    // v0.35：斯诺克（snooker）判定 —— 自由球（Rule 12）与犯规与未击到（Rule 11(b)）共用
+    //
+    // 官方定义：若白球到某颗"球 on"的【左右两侧边缘】都不能被直线击中（被非球 on 挡住），
+    // 即对该球被斯诺克。判定实现：
+    //   ① 取当前所有合法球 on（红球阶段=所有红球；清彩阶段=目标那一颗；任意彩球=任意彩球）
+    //   ② 对每颗球 on，检查"打向该球中心两侧各半个球宽"的两条切线路径是否被其它球挡住
+    //      （沿路径做球-球相交测试；库边不算遮挡，因为可以翻袋——按官方规则只用直线判定）
+    //   ③ 只要有一颗球 on 存在至少一条通畅路径 → 未被斯诺克
+    // =================================================================================
+    /// 当前合法的"球 on"集合（用于斯诺克判定）。
+    List<BallController> BallsOn()
+    {
+        var list = new List<BallController>();
+        if (colorsPhase)
+        {
+            var t = BallOf(targetColor);
+            if (t != null && !t.potted) list.Add(t);
+        }
+        else if (freeColorPending)
+        {
+            foreach (var k in G.ColorOrder)
+            {
+                var b = BallOf(k);
+                if (b != null && !b.potted) list.Add(b);
+            }
+        }
+        else
+        {
+            foreach (var b in balls)
+                if (b.kind == BallKind.Red && !b.potted) list.Add(b);
+        }
+        return list;
+    }
+
+    /// <summary>
+    /// 白球到目标球是否存在"直接击打线路"。做法：从白球中心向目标球两侧各偏移
+    /// 一个球半径（即擦边球的极限位置）分别做路径检测，任一通畅即算有线路。
+    /// 参数 ignorePotting: 判定时忽略的球（自由球判定用自己的逻辑，这里传 null 即可）。
+    /// </summary>
+    bool HasClearPath(Vector3 from, BallController target)
+    {
+        Vector3 tp = target.transform.position;
+        Vector3 d = tp - from;
+        d.y = 0;
+        float dist = d.magnitude;
+        if (dist < 1e-4f) return true;
+        Vector3 dir = d / dist;
+        Vector3 perp = new Vector3(-dir.z, 0f, dir.x);          // 水平面内的垂直方向
+
+        // 两侧擦边：沿垂线偏移约一个球直径（2r）处再瞄准目标球中心，
+        // 这样能覆盖"薄擦即可击中"的最宽合法路径
+        float[] offsets = { -2f * G.BallR, 2f * G.BallR, 0f };
+        foreach (float off in offsets)
+        {
+            Vector3 start = from + perp * off;
+            Vector3 dd = tp - start;
+            dd.y = 0;
+            float ddLen = dd.magnitude;
+            if (ddLen < 1e-4f) return true;
+            Vector3 ddir = dd / ddLen;
+            if (IsPathClear(start, ddir, ddLen, target)) return true;
+        }
+        return false;
+    }
+
+    /// 从 start 沿 dir 走 len 距离，路径上是否没有其它球阻挡（球-球最小间距 ≥ 2r）。
+    bool IsPathClear(Vector3 start, Vector3 dir, float len, BallController target)
+    {
+        foreach (var b in balls)
+        {
+            if (b == cue || b == target || b.potted) continue;
+            Vector3 toB = b.transform.position - start;
+            toB.y = 0;
+            float along = Vector3.Dot(toB, dir);
+            if (along <= 0f || along >= len) continue;           // 不在路径区间内
+            float perp2 = toB.sqrMagnitude - along * along;
+            float rr = 4f * G.BallR * G.BallR;                   // 两个球心距 < 2r 即相撞
+            if (perp2 < rr) return false;                        // 被这颗球挡住
+        }
+        return true;
+    }
+
+    /// 接台方是否对所有球 on 都被斯诺克（决定能否打自由球 / 是否判 Miss）。
+    public bool IsSnookered()
+    {
+        var ons = BallsOn();
+        if (ons.Count == 0) return false;                        // 台面无球 on（极端）
+        foreach (var t in ons)
+        {
+            Vector3 tp = t.transform.position;
+            // 白球本身与该球重叠/极近时不判斯诺克（否则贴球必判犯规）
+            Vector3 d = tp - cue.transform.position; d.y = 0;
+            if (d.magnitude <= 2.02f * G.BallR) return false;
+            if (HasClearPath(cue.transform.position, t)) return false;   // 有通畅线路 → 未被斯诺克
+        }
+        return true;
+    }
+
+    /// 出杆前的球 on 描述（HUD 文案用）。
+    public string BallOnText()
+    {
+        if (freeBallActive) return "自由球";
+        if (OnRed) return "红球";
+        if (colorsPhase) return G.CnName(targetColor);
+        return nominatedSet ? G.CnName(nominatedColor) : "任意彩球";
+    }
+
+    /// 按球种取球对象（回点用）。
+    BallController BallOf(BallKind k)
+    {
+        return balls.FirstOrDefault(b => b.kind == k);
     }
 
     // ---------------------------------------------------------------------------------
@@ -592,6 +751,44 @@ public class GameManager : MonoBehaviour
             case BallKind.Black: return G.BlackSpot;
         }
         return Vector3.zero;
+    }
+
+    /// <summary>
+    /// v0.35：红球回点（仅自由球规则下需要，Rule 12）。
+    /// 红球没有专属置球点，按官方做法放到"粉球点与顶库之间、尽量靠近粉球点"的空位；
+    /// 若被占则沿 +X 方向逐 12mm 找最近空位。
+    /// </summary>
+    void RespotRed(BallController b)
+    {
+        Vector3 baseP = G.PinkSpot;
+        if (SpotFree(baseP, b)) { b.Place(baseP); Debug.Log("[SNOOKER] RESPOT Red -> pink spot area"); return; }
+        for (float dx = 0.012f; dx < 0.90f; dx += 0.012f)
+        {
+            Vector3 q = baseP + Vector3.right * dx;
+            if (q.x > G.BlackSpot.x - 2f * G.BallR) break;   // 不超过黑球点
+            if (SpotFree(q, b)) { b.Place(q); Debug.Log("[SNOOKER] RESPOT Red nudged +" + dx.ToString("F2")); return; }
+        }
+        b.Place(baseP);                                      // 兜底硬放
+    }
+
+    /// <summary>
+    /// v0.35：每帧更新"指定彩球"——球 on 为彩球时，把准线指向的球作为指定对象
+    /// （Rule 3(f)(i)(b)：击球方必须指定打哪一颗彩球）。
+    /// 用准线指向自动表达意图，玩家无需额外操作；指定结果参与首触犯规判定。
+    /// 只有"当前合法的球 on 候选"才能被指定（清彩阶段只能指定目标那一颗）。
+    /// </summary>
+    void UpdateNomination()
+    {
+        if (!(freeColorPending || colorsPhase)) { nominatedSet = false; return; }
+        var aimed = cueCtl != null ? cueCtl.AimedBall : null;
+        if (aimed == null || aimed.potted) { nominatedSet = false; return; }
+        if (colorsPhase)
+        {
+            if (aimed.kind != targetColor) { nominatedSet = false; return; }  // 清彩阶段只能指定目标球
+        }
+        else if (aimed.kind == BallKind.Red) { nominatedSet = false; return; } // 任意彩球阶段不能指定红球
+        nominatedColor = aimed.kind;
+        nominatedSet = true;
     }
 
     /// 一局结束：分高者胜（平分已在结算里用黑球决胜消化，到这里必有胜负）。

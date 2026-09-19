@@ -42,6 +42,8 @@ public class UIManager : MonoBehaviour
     private float menuAlpha, overAlpha;                  // 当前渐变值（Update 平滑）
     private float settingsOffset;                        // 设置面板当前右移量（设计 px，IMGUI 同步用）
     private float settingsAlpha;                         // 设置面板当前整体透明度（IMGUI 同步用）
+    private CanvasGroup hudCG;                           // HUD 整体渐变组（v0.34：菜单/结算时淡出）
+    private float hudAlpha;                              // HUD 当前透明度（0=隐藏 1=完全显示）
 
     // ---- IMGUI 文字内容 ----
     private string p1Text = "", p2Text = "";              // 玩家名（单杆分单独绘制，金色大字）
@@ -56,6 +58,13 @@ public class UIManager : MonoBehaviour
     private float popupTimer;                             // >0 时横幅显示中（含弹入/停留/收回）
     private float popupAlpha, popupYoff = 760f;           // 当前透明度与底部偏移（IMGUI 同步用）
     private string popupPairsText = "";                   // 例如 "5/15"
+
+    // ---- v0.35：让对手重打 提示（判 Miss 后弹出）----
+    private bool replayPrompt;                            // GameManager 请求显示
+    private bool replayShown;                             // 已实际显示（按钮已创建）
+    private float replayAlpha;                            // 淡入淡出
+    private GameObject replayPanel;
+    private CanvasGroup replayCG;
 
     // =================================================================================
     // Build()：由 Bootstrapper 调用一次，搭出全部 UI。
@@ -76,17 +85,32 @@ public class UIManager : MonoBehaviour
         scaler.referenceResolution = new Vector2(1920, 1080);
         scaler.matchWidthOrHeight = 0.5f;
         cgo.transform.SetParent(transform, false);
+        // HUD 整体渐变组（v0.34）：菜单/结算时把 HUD 淡出并停止接收点击 ——
+        // 旧版 HUD 的 uGUI 底图会被菜单遮罩压暗，IMGUI 文字却画在遮罩之上（层级矛盾），
+        // 而且菜单里还能点到"击球/力度"。
+        hudCG = cgo.AddComponent<CanvasGroup>();
 
         if (Object.FindObjectOfType<EventSystem>() == null)
             new GameObject("EventSystem", typeof(EventSystem), typeof(StandaloneInputModule));
 
         // 顶部记分板底条 + 双方阵营色块（美化：蓝=玩家1，红=玩家2）
-        Img("TopPanel", cgo.transform, new Vector2(0.5f, 0.5f), new Vector2(0, 485), new Vector2(1920, 96), new Color(0f, 0f, 0f, 0.55f));
-        Img("ChipP1", cgo.transform, new Vector2(0.5f, 0.5f), new Vector2(-916, 492), new Vector2(28, 28), new Color(0.23f, 0.44f, 0.85f));
-        Img("ChipP2", cgo.transform, new Vector2(0.5f, 0.5f), new Vector2(916, 492), new Vector2(28, 28), new Color(0.85f, 0.27f, 0.27f));
+        // v0.34：HUD 位置一律过 Fit() 夹进"可见设计安全区"。硬贴 1920×1080 边缘的写法
+        //        在 20:9 机型上顶部记分板被裁、在 4:3 机型上左右两侧按钮被裁。
+        //        （分辨率档位只等比改变像素密度、宽高比不变，所以此处算一次即可。）
+        Rect vis = VisibleDesignRect();
+        float topW = Mathf.Min(1920f, vis.width);              // 顶条宽度自适应可见宽度
+        Img("TopPanel", cgo.transform, new Vector2(0.5f, 0.5f),
+            Fit(new Vector2(0, 485), new Vector2(topW, 96)), new Vector2(topW, 96), new Color(0f, 0f, 0f, 0.55f));
+        Img("ChipP1", cgo.transform, new Vector2(0.5f, 0.5f),
+            Fit(new Vector2(-916, 492), new Vector2(28, 28)), new Vector2(28, 28), new Color(0.23f, 0.44f, 0.85f));
+        Img("ChipP2", cgo.transform, new Vector2(0.5f, 0.5f),
+            Fit(new Vector2(916, 492), new Vector2(28, 28)), new Vector2(28, 28), new Color(0.85f, 0.27f, 0.27f));
 
         // ---- 力度滑条 ----
-        power = MakeSlider(cgo.transform, new Vector2(0.5f, 0.5f), new Vector2(630, -448), new Vector2(300, 56));
+        // v0.34：宽 300→240、中心 630→600，右端由 780 收到 720，不再被"击球"按钮
+        //        （745..925）盖住 35px —— 旧版滑条右端约 12% 拖不到，点那里还会直接出杆。
+        power = MakeSlider(cgo.transform, new Vector2(0.5f, 0.5f),
+            Fit(new Vector2(600, -448), new Vector2(240, 56)), new Vector2(240, 56));
         power.value = cc.power;
         power.onValueChanged.AddListener(v =>
         {
@@ -96,17 +120,24 @@ public class UIManager : MonoBehaviour
         powerText = "力度 " + Mathf.RoundToInt(cc.power * 100) + "%";
 
         // ---- HUD 按钮（美化版：自动加深色描边底 + 顶部高光条）----
-        Btn("ShootBtn", cgo.transform, new Vector2(0.5f, 0.5f), new Vector2(835, -452), new Vector2(180, 150),
+        // 位置同样过 Fit()：4:3 机型上最右"击球"与最左"辅助线"按钮原本会被裁掉。
+        Btn("ShootBtn", cgo.transform, new Vector2(0.5f, 0.5f),
+            Fit(new Vector2(835, -452), new Vector2(180, 150)), new Vector2(180, 150),
             new Color(0.16f, 0.55f, 0.25f), cc.BeginStrike);
-        Btn("AimHudBtn", cgo.transform, new Vector2(0.5f, 0.5f), new Vector2(-820, -448), new Vector2(240, 62),
+        Btn("AimHudBtn", cgo.transform, new Vector2(0.5f, 0.5f),
+            Fit(new Vector2(-820, -448), new Vector2(240, 62)), new Vector2(240, 62),
             new Color(0.16f, 0.30f, 0.55f), ToggleAim);
-        Btn("NudgeL", cgo.transform, new Vector2(0.5f, 0.5f), new Vector2(-668, -448), new Vector2(70, 62),
+        Btn("NudgeL", cgo.transform, new Vector2(0.5f, 0.5f),
+            Fit(new Vector2(-660, -448), new Vector2(70, 62)), new Vector2(70, 62),
             new Color(0.20f, 0.23f, 0.32f), () => cc.Rotate(-0.0035f));
-        Btn("NudgeR", cgo.transform, new Vector2(0.5f, 0.5f), new Vector2(-594, -448), new Vector2(70, 62),
+        Btn("NudgeR", cgo.transform, new Vector2(0.5f, 0.5f),
+            Fit(new Vector2(-586, -448), new Vector2(70, 62)), new Vector2(70, 62),
             new Color(0.20f, 0.23f, 0.32f), () => cc.Rotate(+0.0035f));
-        Btn("RestartBtn", cgo.transform, new Vector2(0.5f, 0.5f), new Vector2(-820, -364), new Vector2(240, 58),
+        Btn("RestartBtn", cgo.transform, new Vector2(0.5f, 0.5f),
+            Fit(new Vector2(-820, -364), new Vector2(240, 58)), new Vector2(240, 58),
             new Color(0.42f, 0.22f, 0.16f), () => UnityEngine.SceneManagement.SceneManager.LoadScene(0));
-        Btn("SettingsHudBtn", cgo.transform, new Vector2(0.5f, 0.5f), new Vector2(-540, -364), new Vector2(240, 58),
+        Btn("SettingsHudBtn", cgo.transform, new Vector2(0.5f, 0.5f),
+            Fit(new Vector2(-540, -364), new Vector2(240, 58)), new Vector2(240, 58),
             new Color(0.20f, 0.23f, 0.32f), ToggleSettings);
 
         // ---- 菜单/结算/设置 共用上层画布 ----
@@ -188,6 +219,21 @@ public class UIManager : MonoBehaviour
         popupCG.alpha = 0f;
         popupCG.blocksRaycasts = false;
 
+        // ---- v0.35：让对手重打 提示框（判 Miss 后显示，Rule 11(b)）----
+        // 位置在屏幕中下方（不遮挡球堆与瞄准区），两个按钮左右并排
+        replayPanel = Img("ReplayPanel", mgo.transform, new Vector2(0.5f, 0.5f), new Vector2(0, -300), new Vector2(1160, 210),
+            new Color(1f, 0.80f, 0.25f));                                  // 金色描边
+        Img("ReplayIn", replayPanel.transform, new Vector2(0.5f, 0.5f), Vector2.zero, new Vector2(1140, 190),
+            new Color(0.07f, 0.09f, 0.11f, 0.97f));
+        Btn("ReplayYes", replayPanel.transform, new Vector2(0.5f, 0.5f), new Vector2(-290, -52), new Vector2(520, 84),
+            new Color(0.16f, 0.45f, 0.62f), ChooseReplay);
+        Btn("ReplayNo", replayPanel.transform, new Vector2(0.5f, 0.5f), new Vector2(290, -52), new Vector2(520, 84),
+            new Color(0.22f, 0.26f, 0.34f), DismissReplay);
+        replayCG = replayPanel.AddComponent<CanvasGroup>();
+        replayCG.alpha = 0f;
+        replayCG.blocksRaycasts = false;
+        replayCG.interactable = false;
+
         foreach (var g in mgo.GetComponentsInChildren<Graphic>())
             if (uiMat != null) g.material = uiMat;
 
@@ -240,10 +286,21 @@ public class UIManager : MonoBehaviour
             settingsCG.blocksRaycasts = settingsAnimT > 0.5f;
             settingsCG.interactable = settingsAnimT > 0.5f;
             if (settingsPanelRT != null)
-                settingsPanelRT.anchoredPosition = new Vector2(settingsOffset * K(), 0f);
+                settingsPanelRT.anchoredPosition = new Vector2(settingsOffset, 0f);
         }
 
         if (msgTimer > 0f) msgTimer -= Time.deltaTime;
+
+        // ---- HUD 显隐（v0.34）：只在 Aiming/Rolling 显示 ----
+        // 菜单期与结算期淡出，既消除"文字亮、按钮暗"的层级矛盾，也防止在菜单里点到击球/力度。
+        bool hudWant = gm != null && (gm.state == GameManager.State.Aiming || gm.state == GameManager.State.Rolling);
+        hudAlpha = Mathf.MoveTowards(hudAlpha, hudWant ? 1f : 0f, Time.deltaTime / 0.25f);
+        if (hudCG != null)
+        {
+            hudCG.alpha = hudAlpha;
+            hudCG.blocksRaycasts = hudAlpha > 0.5f;
+            hudCG.interactable = hudAlpha > 0.5f;
+        }
 
         // ---- 147 横幅动画：0.45s easeOutCubic 弹入 → 停留 → 0.35s 收回 ----
         if (popupTimer > 0f)
@@ -263,12 +320,63 @@ public class UIManager : MonoBehaviour
             if (popupRT != null)
                 popupRT.anchoredPosition = new Vector2(0f, (-270f - popupYoff) * K());
         }
+
+        // ---- v0.35：让对手重打 提示淡入淡出 ----
+        float rTarget = replayPrompt ? 1f : 0f;
+        replayAlpha = Mathf.MoveTowards(replayAlpha, rTarget, Time.deltaTime / 0.25f);
+        if (replayCG != null)
+        {
+            replayCG.alpha = replayAlpha;
+            replayCG.blocksRaycasts = replayAlpha > 0.6f;
+            replayCG.interactable = replayAlpha > 0.6f;
+        }
     }
 
     /// 设计→屏幕统一缩放系数（与 CanvasScaler match 0.5 一致）。
     private float K()
     {
         return Mathf.Sqrt((Screen.width / 1920f) * (Screen.height / 1080f));
+    }
+
+    /// <summary>
+    /// 当前"可见的设计坐标安全区"（uGUI 约定：原点在屏幕中心，x 右为正、y 上为正）。
+    /// CanvasScaler(match 0.5) 把设计像素线性放大 K() 倍到屏幕，因此
+    ///   可见范围 = 屏幕像素 / K()；再用 Screen.safeArea 扣掉刘海/挖孔，
+    /// 并计入安全区中心相对屏幕中心的偏移（横屏刘海机左右不对称时用得上）。
+    /// 16:9 → ±960 / ±540；20:9 纵向只剩 ±483、4:3 横向只剩 ±831 ——
+    /// HUD 若硬贴 1920×1080 的边缘就必然被裁掉（v0.33 的问题）。
+    /// </summary>
+    private Rect VisibleDesignRect()
+    {
+        float k = Mathf.Max(0.0001f, K());
+        Rect sa = Screen.safeArea;
+        if (sa.width <= 0f || sa.height <= 0f) sa = new Rect(0, 0, Screen.width, Screen.height);
+        float halfW = sa.width * 0.5f / k;
+        float halfH = sa.height * 0.5f / k;
+        float cx = (sa.center.x - Screen.width * 0.5f) / k;
+        float cy = (sa.center.y - Screen.height * 0.5f) / k;
+        return new Rect(cx - halfW, cy - halfH, halfW * 2f, halfH * 2f);
+    }
+
+    /// 把一个【中心锚定】的 HUD 元素位置夹进可见安全区（margin = 设计像素留白）。
+    /// 元素比可见区还大时退化为居中，避免 Clamp 出现 min > max。
+    private Vector2 Fit(Vector2 pos, Vector2 size, float margin = 12f)
+    {
+        Rect v = VisibleDesignRect();
+        float hx = size.x * 0.5f + margin, hy = size.y * 0.5f + margin;
+        float minX = v.xMin + hx, maxX = v.xMax - hx;
+        float minY = v.yMin + hy, maxY = v.yMax - hy;
+        pos.x = minX <= maxX ? Mathf.Clamp(pos.x, minX, maxX) : v.center.x;
+        pos.y = minY <= maxY ? Mathf.Clamp(pos.y, minY, maxY) : v.center.y;
+        return pos;
+    }
+
+    /// IMGUI 版 Fit：输入输出都是设计坐标（中心 960/540、y 向下）。
+    /// 与 uGUI 的 Fit 走同一套夹取结果，保证"按钮底图"与"IMGUI 文字"永远重合。
+    private Rect FittedRect(float cx, float cy, float w, float h, float margin = 12f)
+    {
+        Vector2 p = Fit(new Vector2(cx - 960f, 540f - cy), new Vector2(w, h), margin);
+        return CRect(p.x + 960f, 540f - p.y, w, h);
     }
 
     // ---------------------------------------------------------------------------------
@@ -480,6 +588,33 @@ public class UIManager : MonoBehaviour
     }
 
     // =================================================================================
+    // v0.35：犯规与未击到的"让对手重打"选项（Rule 11(b)）
+    //   UI 表现：判 Miss 后在屏幕中下方弹出一个黄框提示 + 两个按钮
+    //     左【让对手重打】→ GameManager.RequestReplay()（击球权交回犯规方，球位不动）
+    //     右【我自己打】  → 仅关闭提示（接台方按当前球位正常击球）
+    // =================================================================================
+    public void ShowReplayOption()
+    {
+        replayPrompt = true;                             // Update 里驱动淡入
+    }
+
+    /// 玩家选择"自己打"：只收起提示。
+    void DismissReplay()
+    {
+        replayPrompt = false;
+        GameManager.I.DeclineFreeBall();                 // 顺带放弃自由球资格（若同时存在）
+        replayShown = false;
+    }
+
+    /// 玩家选择"让对手重打"。
+    void ChooseReplay()
+    {
+        replayPrompt = false;
+        replayShown = false;
+        GameManager.I.RequestReplay();
+    }
+
+    // =================================================================================
     // IMGUI 文字层
     // =================================================================================
     private Rect CRect(float cx, float cy, float w, float h)
@@ -509,32 +644,41 @@ public class UIManager : MonoBehaviour
         GUI.Label(r, text, style);
     }
 
+    /// HUD 文字随 HUD 整体淡出（与 uGUI 侧 CanvasGroup 的 alpha 同步）。
+    private Color Fade(Color c) { c.a *= hudAlpha; return c; }
+
     void OnGUI()
     {
         if (Event.current.type != EventType.Repaint) return;
         if (font == null) return;
 
         // ---- HUD 记分板（v0.32：两侧 = 玩家名 + 金色大字单杆分；总分在中央行）----
-        // 注意：CRect 的 cx 是矩形【中心】，左对齐文字的 cx = 左边缘 + w/2，右对齐则 - w/2
-        Color breakGold = new Color(1f, 0.84f, 0.30f);
-        Color dimGray = new Color(0.72f, 0.75f, 0.78f);
-        DrawLabel(CRect(161, 48, 190, 76), p1Text, 30, Color.white, TextAnchor.MiddleLeft);       // 名字：左边缘 66
-        DrawLabel(CRect(303, 48, 90, 76), "单杆", 22, dimGray, TextAnchor.MiddleLeft);            // 左边缘 258
-        DrawLabel(CRect(447, 48, 190, 76), p1Break, 46, breakGold, TextAnchor.MiddleLeft);        // 左边缘 352
-        DrawLabel(CRect(1749, 48, 190, 76), p2Text, 30, Color.white, TextAnchor.MiddleRight);     // 名字：右边缘 1844
-        DrawLabel(CRect(1585, 48, 90, 76), "单杆", 22, dimGray, TextAnchor.MiddleRight);          // 右边缘 1630
-        DrawLabel(CRect(1435, 48, 190, 76), p2Break, 46, breakGold, TextAnchor.MiddleRight);      // 右边缘 1530
-        DrawLabel(CRect(960, 48, 900, 76), centerText, 28, new Color(1f, 0.92f, 0.6f), TextAnchor.MiddleCenter);
-        DrawLabel(CRect(960, 160, 1400, 64), msgText, 36, new Color(1f, 0.85f, 0.25f), TextAnchor.MiddleCenter);
-        DrawLabel(CRect(1590, 1080 - 158, 300, 44), powerText, 28, Color.white, TextAnchor.MiddleCenter);
+        // v0.34：① 仅在 Aiming/Rolling 显示，不再浮在菜单/结算遮罩之上；
+        //        ② 坐标用 FittedRect（= CRect + 可见安全区夹取），与 uGUI 按钮同一套算法，
+        //           保证 20:9 / 4:3 等非 16:9 机型上文字与底图一起被夹住、不会各自出屏。
+        // 注意：cx 是矩形【中心】，左对齐文字的 cx = 左边缘 + w/2，右对齐则 - w/2
+        if (hudAlpha > 0.01f)
+        {
+            Color breakGold = Fade(new Color(1f, 0.84f, 0.30f));
+            Color dimGray = Fade(new Color(0.72f, 0.75f, 0.78f));
+            DrawLabel(FittedRect(161, 48, 190, 76), p1Text, 30, Fade(Color.white), TextAnchor.MiddleLeft);       // 名字：左边缘 66
+            DrawLabel(FittedRect(303, 48, 90, 76), "单杆", 22, dimGray, TextAnchor.MiddleLeft);                    // 左边缘 258
+            DrawLabel(FittedRect(447, 48, 190, 76), p1Break, 46, breakGold, TextAnchor.MiddleLeft);                // 左边缘 352
+            DrawLabel(FittedRect(1749, 48, 190, 76), p2Text, 30, Fade(Color.white), TextAnchor.MiddleRight);        // 名字：右边缘 1844
+            DrawLabel(FittedRect(1585, 48, 90, 76), "单杆", 22, dimGray, TextAnchor.MiddleRight);                  // 右边缘 1630
+            DrawLabel(FittedRect(1435, 48, 190, 76), p2Break, 46, breakGold, TextAnchor.MiddleRight);              // 右边缘 1530
+            DrawLabel(FittedRect(960, 48, 900, 76), centerText, 28, Fade(new Color(1f, 0.92f, 0.6f)), TextAnchor.MiddleCenter);
+            DrawLabel(FittedRect(960, 160, 1400, 64), msgText, 36, Fade(new Color(1f, 0.85f, 0.25f)), TextAnchor.MiddleCenter);
+            DrawLabel(FittedRect(1560, 922, 300, 44), powerText, 28, Fade(Color.white), TextAnchor.MiddleCenter);
 
-        // ---- HUD 按钮文字 ----
-        DrawLabel(CRect(1920 - 125, 1080 - 88, 180, 150), "击球", 46, Color.white, TextAnchor.MiddleCenter);
-        DrawLabel(CRect(140, 1080 - 92, 240, 62), aimHudText, 28, Color.white, TextAnchor.MiddleCenter);
-        DrawLabel(CRect(292, 1080 - 92, 70, 62), "◀", 30, Color.white, TextAnchor.MiddleCenter);
-        DrawLabel(CRect(366, 1080 - 92, 70, 62), "▶", 30, Color.white, TextAnchor.MiddleCenter);
-        DrawLabel(CRect(140, 1080 - 176, 240, 58), "重新开局", 28, Color.white, TextAnchor.MiddleCenter);
-        DrawLabel(CRect(420, 1080 - 176, 240, 58), "设 置", 28, Color.white, TextAnchor.MiddleCenter);
+            // ---- HUD 按钮文字（与上面 Btn/Fit 的位置逐一对齐）----
+            DrawLabel(FittedRect(1920 - 125, 1080 - 88, 180, 150), "击球", 46, Fade(Color.white), TextAnchor.MiddleCenter);
+            DrawLabel(FittedRect(140, 1080 - 92, 240, 62), aimHudText, 28, Fade(Color.white), TextAnchor.MiddleCenter);
+            DrawLabel(FittedRect(300, 1080 - 92, 70, 62), "◀", 30, Fade(Color.white), TextAnchor.MiddleCenter);
+            DrawLabel(FittedRect(374, 1080 - 92, 70, 62), "▶", 30, Fade(Color.white), TextAnchor.MiddleCenter);
+            DrawLabel(FittedRect(140, 1080 - 176, 240, 58), "重新开局", 28, Fade(Color.white), TextAnchor.MiddleCenter);
+            DrawLabel(FittedRect(420, 1080 - 176, 240, 58), "设 置", 28, Fade(Color.white), TextAnchor.MiddleCenter);
+        }
 
         // ---- 主菜单（文字随菜单整体淡入；设置面板打开时再淡出避免与面板重叠）----
         if (menuAlpha > 0.01f)
@@ -588,13 +732,47 @@ public class UIManager : MonoBehaviour
         // ---- 147 满分提示横幅（文字随横幅从底部弹入）----
         if (popupAlpha > 0.01f)
         {
-            float poy = 810 - popupYoff;                     // 横幅当前设计 y（负值=还在屏幕外）
+            float poy = 810 + popupYoff;                     // 横幅当前设计 y（越大越靠屏幕下方，从底部升上来）
+            // 注：uGUI 底图在屏幕中心锚定的 y=-270（y 轴向上），换算成 IMGUI 的设计 y（向下）
+            //     正是 540+270=810；popupYoff 从 760 归零，所以底图与文字同向从下往上升。
+            //     v0.33 这里写成 810-popupYoff，底图往上、文字却往下，动画全程错位数百像素。
             Color gold = new Color(1f, 0.84f, 0.30f); gold.a *= popupAlpha;
             Color goldLight = new Color(1f, 0.92f, 0.55f); goldLight.a *= popupAlpha;
             Color w = Color.white; w.a *= popupAlpha;
             DrawLabel(CRect(705, poy, 280, 110), "147", 64, gold, TextAnchor.MiddleRight);
             DrawLabel(CRect(770, poy - 30, 420, 56), "满分进行中", 34, w, TextAnchor.MiddleLeft);
             DrawLabel(CRect(770, poy + 28, 420, 50), "红黑连击 " + popupPairsText, 26, goldLight, TextAnchor.MiddleLeft);
+        }
+
+        // ---- v0.35：让对手重打 提示文字（Rule 11(b) 犯规与未击到）----
+        // uGUI 底图中心锚定 y=-300 → IMGUI 设计 y = 540+300 = 840
+        if (replayAlpha > 0.01f)
+        {
+            Color gold = new Color(1f, 0.84f, 0.30f); gold.a *= replayAlpha;
+            Color w = Color.white; w.a *= replayAlpha;
+            Color sub = new Color(0.80f, 0.85f, 0.90f); sub.a *= replayAlpha;
+            DrawLabel(CRect(960, 792, 1100, 56), "对方犯规且未击中球（Miss）", 32, gold, TextAnchor.MiddleCenter);
+            DrawLabel(CRect(960, 836, 1100, 44), "规则允许你要求对方从当前球位重打", 24, sub, TextAnchor.MiddleCenter);
+            DrawLabel(CRect(670, 888, 520, 84), "让对手重打", 34, w, TextAnchor.MiddleCenter);
+            DrawLabel(CRect(1250, 888, 520, 84), "我自己打", 34, w, TextAnchor.MiddleCenter);
+        }
+
+        // ---- v0.35：自由球 / 指定彩球 状态提示（HUD 中央行下方）----
+        var gm = GameManager.I;
+        if (gm != null && gm.state == GameManager.State.Aiming)
+        {
+            if (gm.freeBallActive)
+                DrawLabel(CRect(960, 240, 900, 52), "自由球：可指定任意一颗球作为球 on",
+                    30, new Color(0.45f, 0.95f, 0.60f), TextAnchor.MiddleCenter);
+            else if (gm.freeColorPending || gm.colorsPhase)
+            {
+                string nom = gm.nominatedSet
+                    ? "已指定 " + G.CnName(gm.nominatedColor)
+                    : "请用准线瞄准要打的彩球以指定";
+                DrawLabel(CRect(960, 240, 900, 46), nom, 24,
+                    gm.nominatedSet ? new Color(0.95f, 0.88f, 0.55f) : new Color(0.70f, 0.74f, 0.80f),
+                    TextAnchor.MiddleCenter);
+            }
         }
     }
 }

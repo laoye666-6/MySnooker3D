@@ -51,6 +51,9 @@ public static class GameSettings
     /// 应用当前设置到引擎（帧率 / 分辨率 / 阴影）。
     public static void Apply()
     {
+        // v0.34：必须先关垂直同步。工程默认画质档的 vSyncCount=1 时 targetFrameRate 会被忽略，
+        // 四档帧率(60/90/120/144)会全部失效；关掉后 targetFrameRate 才是真正的上限。
+        QualitySettings.vSyncCount = 0;
         Application.targetFrameRate = FpsOptions[FpsIndex];
         int w = Mathf.Max(320, Mathf.RoundToInt(NativeW * ResOptions[ResIndex]));
         int h = Mathf.Max(180, Mathf.RoundToInt(NativeH * ResOptions[ResIndex]));

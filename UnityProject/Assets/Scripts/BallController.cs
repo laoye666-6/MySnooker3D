@@ -93,6 +93,9 @@ public class BallController : MonoBehaviour
     /// </summary>
     public void Place(Vector3 pos)
     {
+        // v0.34：先停掉可能仍在运行的 Sink 协程。袋口井底已与台面平齐（v0.30），球不会再掉到
+        // -0.5m 以下，Sink 的等待循环会永远空转；一颗球被反复回点就会累积一堆空协程（旧版每次回点漏一个）。
+        StopAllCoroutines();
         potted = false;                                  // 复活：清除落袋标志
         rb.detectCollisions = true;                      // 恢复碰撞
         rb.velocity = Vector3.zero;                      // 清空旧速度

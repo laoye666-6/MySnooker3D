@@ -12,6 +12,7 @@
 // +Y 向下看时逆时针）。Dir 属性由角度换算成单位方向向量。
 // =====================================================================================
 using System.Collections;
+using System.Collections.Generic;
 using UnityEngine;
 using UnityEngine.EventSystems;
 
@@ -31,6 +32,16 @@ public class CueController : MonoBehaviour
     private GameObject stick;      // 球杆模型（Blender 导出，杆头在局部 +X）
     private AimLine aimLine;       // 同物体上的瞄准线组件
     private bool striking;         // 正在播出杆动画（期间锁输入、不隐藏球杆）
+
+    /// <summary>
+    /// v0.35：准线当前指向的球（供 GameManager 做"指定彩球"，Rule 3(f)(i)(b)）。
+    /// 即使玩家关掉辅助线（aimLineOn=false）也会计算——指定彩球是规则要求，
+    /// 不该因为不显示辅助线就失去指定能力。
+    /// </summary>
+    public BallController AimedBall
+    {
+        get { return aimLine != null ? aimLine.AimedBall : null; }
+    }
 
     /// 当前瞄准方向的单位向量（只取水平面，y 恒 0）。
     public Vector3 Dir
@@ -93,8 +104,13 @@ public class CueController : MonoBehaviour
             stick.transform.rotation = Quaternion.LookRotation(Dir) * Quaternion.Euler(0f, 90f, 0f);
         }
         aimLine.Show(aimLineOn);
-        if (aimLineOn) aimLine.Compute(gm.cue.transform.position, Dir);
+        // 无论辅助线是否显示都要计算：GameManager 依赖 AimedBall 做"指定彩球"（Rule 3(f)(i)(b)）
+        aimLine.Compute(gm.cue.transform.position, Dir);
     }
+
+    // 起手就落在 UI 上的手指（fingerId）。只在手指按下那一帧判定一次并记住，
+    // 之后这根手指不再参与瞄准——见 HandleAimInput 里的说明。
+    private readonly HashSet<int> uiFingers = new HashSet<int>();
 
     // ---------------------------------------------------------------------------------
     // 瞄准输入：触屏优先，无触屏时退回鼠标（编辑器调试用）。
@@ -109,8 +125,23 @@ public class CueController : MonoBehaviour
         {
             foreach (var t in Input.touches)
             {
-                if (t.phase != TouchPhase.Moved) continue;            // 只统计移动中的触点
-                if (EventSystem.current != null && EventSystem.current.IsPointerOverGameObject(t.fingerId)) continue;
+                // v0.34：UI 命中判定只在【手指按下那一帧】做一次并记住这根手指。
+                // 旧版每帧都调 IsPointerOverGameObject：手指从台面拖到底部 UI 区域上方时
+                // 瞄准会莫名中断（人还按着屏幕，球杆却不动了）。
+                if (t.phase == TouchPhase.Began)
+                {
+                    if (EventSystem.current != null && EventSystem.current.IsPointerOverGameObject(t.fingerId))
+                        uiFingers.Add(t.fingerId);
+                    else uiFingers.Remove(t.fingerId);
+                    continue;
+                }
+                if (t.phase == TouchPhase.Ended || t.phase == TouchPhase.Canceled)
+                {
+                    uiFingers.Remove(t.fingerId);
+                    continue;
+                }
+                if (t.phase != TouchPhase.Moved) continue;             // 只统计移动中的触点
+                if (uiFingers.Contains(t.fingerId)) continue;           // 起手落在 UI 上的手指不参与瞄准
                 dx += t.deltaPosition.x;
             }
         }
