@@ -1,13 +1,34 @@
 @echo off
 title MySnooker3D - GitHub Publish Wizard
 set "GH=C:\Program Files\GitHub CLI\gh.exe"
-set "GIT=D:\Program Files\Git\cmd\git.exe"
+set "GITDIR=D:\Program Files\Git\cmd"
+set "GIT=%GITDIR%\git.exe"
+
+rem Ensure git is discoverable by gh (gh requires git in PATH)
+set "PATH=%GITDIR%;%PATH%"
 
 echo ============================================================
 echo   MySnooker3D - GitHub Publish Wizard
 echo   Local repo is ready. Only auth + push left.
 echo   (This window uses English to avoid codepage issues.)
 echo ============================================================
+echo.
+
+rem Sanity check: both tools must exist
+if not exist "%GIT%" (
+    echo [ERROR] git not found at "%GIT%"
+    echo         Please fix GITDIR at the top of this file.
+    pause
+    exit /b 1
+)
+if not exist "%GH%" (
+    echo [ERROR] gh not found at "%GH%"
+    echo         Please fix GH at the top of this file.
+    pause
+    exit /b 1
+)
+echo [OK] git: & "%GIT%" --version
+echo [OK] gh : & "%GH%" --version
 echo.
 
 echo ---- Step 1: Login to GitHub ----
