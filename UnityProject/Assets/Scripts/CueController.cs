@@ -29,9 +29,17 @@ public class CueController : MonoBehaviour
     /// 辅助瞄准线开关（"辅助线：开/关"按钮控制，需求要求可选择性开启）。
     public bool aimLineOn = true;
 
+    /// v0.36：加塞——击球点在白球上的偏移量（-1~1，由加塞圆盘控件给出）。
+    ///   spinV：+1 = 高杆（跟杆/上旋）  -1 = 低杆（缩杆/下旋）
+    ///   spinH：-1 = 左塞              +1 = 右塞
+    /// 出杆时交给 GameManager.Shoot → BallController.ApplySpin 换算成白球初始角速度。
+    /// 数值为 0 时（默认）出杆效果与 v0.35 完全一致。
+    public float spinV, spinH;
+
     private GameObject stick;      // 球杆模型（Blender 导出，杆头在局部 +X）
     private AimLine aimLine;       // 同物体上的瞄准线组件
     private bool striking;         // 正在播出杆动画（期间锁输入、不隐藏球杆）
+    private Camera cam;            // 主相机缓存（"球在手"拖球要把屏幕坐标换算成台面坐标）
 
     /// <summary>
     /// v0.35：准线当前指向的球（供 GameManager 做"指定彩球"，Rule 3(f)(i)(b)）。
@@ -112,14 +120,66 @@ public class CueController : MonoBehaviour
     // 之后这根手指不再参与瞄准——见 HandleAimInput 里的说明。
     private readonly HashSet<int> uiFingers = new HashSet<int>();
 
+    // v0.36：正在"拖白球"的手指（"球在手"时按下点落在白球上）。同样只判定一次。
+    private readonly HashSet<int> ballFingers = new HashSet<int>();
+    private bool mouseBallDrag;    // 鼠标版（编辑器调试）拖白球
+
+    /// 主相机（Bootstrapper 给它打了 MainCamera 标签，取不到时兜底全局查找）。
+    private Camera Cam
+    {
+        get
+        {
+            if (cam == null)
+            {
+                cam = Camera.main;
+                if (cam == null) cam = FindObjectOfType<Camera>();
+            }
+            return cam;
+        }
+    }
+
+    /// 屏幕点是否落在白球上（含触摸容差，按屏幕高度自适应——手指比球大得多）。
+    private bool OnCueBall(Vector2 screenPos)
+    {
+        var gm = GameManager.I;
+        Camera c = Cam;
+        if (c == null || gm == null || gm.cue == null) return false;
+        Vector3 sp = c.WorldToScreenPoint(gm.cue.transform.position);
+        if (sp.z < 0f) return false;                                  // 球在相机背后
+        float tol = Mathf.Max(70f, Screen.height * 0.085f);
+        return ((Vector2)sp - screenPos).sqrMagnitude <= tol * tol;
+    }
+
+    /// 屏幕点 → 台面平面（球心高度）上的世界坐标。
+    private Vector3 TablePoint(Vector2 screenPos)
+    {
+        var gm = GameManager.I;
+        Camera c = Cam;
+        if (c == null || gm == null || gm.cue == null) return Vector3.zero;
+        Ray ray = c.ScreenPointToRay(screenPos);
+        var pl = new Plane(Vector3.up, new Vector3(0f, G.BallR, 0f));
+        float dist;
+        if (pl.Raycast(ray, out dist)) return ray.GetPoint(dist);
+        return gm.cue.transform.position;                             // 相机几乎平视时兜底：不动
+    }
+
+    private bool OverUi()
+    {
+        return EventSystem.current != null && EventSystem.current.IsPointerOverGameObject();
+    }
+
     // ---------------------------------------------------------------------------------
     // 瞄准输入：触屏优先，无触屏时退回鼠标（编辑器调试用）。
     //   - 累加所有触点的水平位移 deltaPosition.x
     //   - 落在 UI 上的触摸/点击不参与（EventSystem 命中检测），防止拖滑条时转动球杆
     //   - 最后按 Sensitivity 换算成弧度
+    //
+    // v0.36："球在手"（开球前 / 白球落袋后）时，按在白球上的手指改为【拖动白球摆放】，
+    //        其余手指照常转球杆 —— 于是"摆球"与"瞄准"不需要任何模式切换按钮。
     // ---------------------------------------------------------------------------------
     void HandleAimInput()
     {
+        var gm = GameManager.I;
         float dx = 0f;                                                // 本帧水平位移合计（像素）
         if (Input.touchCount > 0)
         {
@@ -131,24 +191,44 @@ public class CueController : MonoBehaviour
                 if (t.phase == TouchPhase.Began)
                 {
                     if (EventSystem.current != null && EventSystem.current.IsPointerOverGameObject(t.fingerId))
+                    {
                         uiFingers.Add(t.fingerId);
-                    else uiFingers.Remove(t.fingerId);
+                        ballFingers.Remove(t.fingerId);
+                        continue;
+                    }
+                    uiFingers.Remove(t.fingerId);
+                    // v0.36：按下点落在白球上且白球"在手" → 这根手指拖球，不参与瞄准
+                    if (gm.cueInHand && OnCueBall(t.position)) ballFingers.Add(t.fingerId);
+                    else ballFingers.Remove(t.fingerId);
                     continue;
                 }
                 if (t.phase == TouchPhase.Ended || t.phase == TouchPhase.Canceled)
                 {
                     uiFingers.Remove(t.fingerId);
+                    ballFingers.Remove(t.fingerId);
                     continue;
                 }
                 if (t.phase != TouchPhase.Moved) continue;             // 只统计移动中的触点
                 if (uiFingers.Contains(t.fingerId)) continue;           // 起手落在 UI 上的手指不参与瞄准
+                if (ballFingers.Contains(t.fingerId))                   // 拖白球摆放（越界会由 GM 夹回 D 区）
+                {
+                    gm.DragCueBall(TablePoint(t.position));
+                    continue;
+                }
                 dx += t.deltaPosition.x;
             }
         }
-        else if (Input.GetMouseButton(0))
+        else
         {
-            if (EventSystem.current == null || !EventSystem.current.IsPointerOverGameObject())
-                dx += Input.GetAxis("Mouse X");                       // 鼠标 X 轴帧位移
+            // ---- 鼠标（编辑器内调试用）----
+            if (Input.GetMouseButtonDown(0))
+                mouseBallDrag = gm.cueInHand && !OverUi() && OnCueBall(Input.mousePosition);
+            if (Input.GetMouseButtonUp(0)) mouseBallDrag = false;
+            if (Input.GetMouseButton(0))
+            {
+                if (mouseBallDrag) gm.DragCueBall(TablePoint(Input.mousePosition));
+                else if (!OverUi()) dx += Input.GetAxis("Mouse X");    // 鼠标 X 轴帧位移
+            }
         }
         if (Mathf.Abs(dx) > 0f) Rotate(dx * Sensitivity);
     }
@@ -164,7 +244,7 @@ public class CueController : MonoBehaviour
     // ---------------------------------------------------------------------------------
     // 出杆协程：0.08 秒内把球杆从蓄力位置推近到贴球（Lerp 插值），动画结束瞬间
     // 调 GameManager.Shoot 施加真实速度。视觉与逻辑分离：动画只是演出，
-    // 球的实际初速由 Shoot 里的 power 决定。
+    // 球的实际初速由 Shoot 里的 power 决定，v0.36 起连同加塞（spinV/spinH）一起交给物理。
     // ---------------------------------------------------------------------------------
     IEnumerator StrikeCo()
     {
@@ -173,7 +253,7 @@ public class CueController : MonoBehaviour
         if (stick == null)                                            // 无球杆资源时直接出杆
         {
             striking = false;
-            GameManager.I.Shoot(Dir, power);
+            GameManager.I.Shoot(Dir, power, spinV, spinH);
             yield break;
         }
         stick.SetActive(true);
@@ -187,6 +267,6 @@ public class CueController : MonoBehaviour
             yield return null;
         }
         striking = false;
-        GameManager.I.Shoot(Dir, power);                              // 真正出杆
+        GameManager.I.Shoot(Dir, power, spinV, spinH);                // 真正出杆（带上加塞）
     }
 }

@@ -100,6 +100,57 @@ public static class G
     public const float CenterCaptureR = 0.066f;
 
     // ------------------------------------------------------------------
+    // 二b、加塞（杆法）物理参数 —— v0.36 新增
+    //
+    // 真实台球的自旋无法用 PhysX 表达（刚体+库仑摩擦只会把自旋抹平），
+    // 因此白球的自旋由 BallController 里的"滑移摩擦"模型自己算：
+    //   接触点滑移速度 u = v + ω × (-r·ŷ)，摩擦力沿 -û 作用于球心（改变线速度），
+    //   同时以 τ = r_c × F 反过来改变角速度 → 自旋与滚动互相收敛，
+    //   于是"跟杆推着球往前、低杆把球拉回来"全部自然涌现。
+    // 系数含义与手感调法：
+    //   SpinTopK   击球点拉到最高/最低时，附加角速度 = K × (v/r)。
+    //              K=1.5 时最大低杆约等于"线速度 0.5 倍的反旋"，职业级拉杆手感。
+    //   SpinSideK  最大左右塞的角速度倍数（0.7 ≈ 强塞，再大会让库边角度过于夸张）。
+    //   SlipDecel  打滑时的滑动摩擦减速度（m/s²），真实球-呢约 0.2g ≈ 1.96。
+    //              它同时决定自旋衰减速度（dω/dt = 2.5·a/r），调大 → 杆法效果消失更快。
+    //   SpinSideDecay 侧塞在台呢上的旋转阻尼（1/s，指数衰减）。侧塞不该像高低杆那样
+    //              被滑移摩擦吃掉（竖直轴自旋在接触点无滑移），故单独给一个慢衰减。
+    //   CushionSpinGrab/Loss 撞库时侧塞"抓"住库边把球横甩出去的强度与每次的侧旋损失。
+    // ------------------------------------------------------------------
+
+    /// 高低杆强度：击球点偏移量 |spinV| ≤ 1，附加角速度 = spinV × SpinTopK × (v / BallR)。
+    /// 注意高杆与低杆用【不同】系数：中杆(spinV=0)被钉在"自然滚动"(ω = v/r)上，
+    /// 若两侧同用一个系数，低杆侧要拖到 spinV < -0.67 才真正出现反旋，
+    /// 中间一大段"略低杆"其实是无旋滑行 —— 玩家拖到"低杆"却看不到缩杆效果。
+    /// 因此低杆侧用更大的 SpinLowK，使反旋从 spinV ≈ -0.4 就开始出现。
+    public const float SpinTopK = 1.5f;
+
+    /// 低杆强度（仅 spinV < 0 时使用，见上面的说明）。
+    /// spinV=-1 → ω = -1.6×(v/r)：真机实测（同力度 4.46m/s 直球，撞堆后白球落点）
+    ///   中杆 -1.17m / spinV=-0.36 → -0.51m / spinV=-0.85 → 白球被拉回并自己撞进顶袋。
+    /// 2.5 时满杆回缩过于剧烈（白球常常自己追进袋），故收到 1.6 —— 保留"拖到一半就有
+    /// 明显缩杆"，但满杆不再失控。
+    public const float SpinLowK = 1.6f;
+
+    /// 左右塞强度：ω 竖直分量 = -spinH × SpinSideK × (v / BallR)（见 BallController 符号说明）。
+    public const float SpinSideK = 0.7f;
+
+    /// 球在台呢上打滑时的滑动摩擦减速度（m/s²）= 0.2g。
+    public const float SlipDecel = 1.96f;
+
+    /// 接触点滑移速度低于此值（m/s）即视为纯滚动，改按 RollDecel 处理。
+    public const float SlipThreshold = 0.012f;
+
+    /// 侧塞的台呢旋转阻尼（1/s），指数衰减：每秒保留 e^-0.45 ≈ 64%。
+    public const float SpinSideDecay = 0.45f;
+
+    /// 撞库时侧塞的切向踢出系数：Δv = Grab × ω_y × r（Grab=1 表示完全抓死）。
+    public const float CushionSpinGrab = 0.45f;
+
+    /// 每次撞库损失的侧旋比例（库边摩擦吸收）。
+    public const float CushionSpinLoss = 0.35f;
+
+    // ------------------------------------------------------------------
     // 三、袋口捕获圆心（世界坐标，y=0 平面）
     // 前 4 个为角袋（右上/右下/左上/左下），后 2 个为中袋（上/下）。
     // 顺序被 GameManager.CheckPockets 依赖：i<4 用 CornerCaptureR，否则用 CenterCaptureR。
@@ -141,6 +192,28 @@ public static class G
     // ------------------------------------------------------------------
     // 六、工具函数
     // ------------------------------------------------------------------
+
+    /// <summary>
+    /// 把一个点夹进开球区 D（v0.36）：球心不得越过开球线（x ≤ BaulkX），
+    /// 且到棕球点（D 圆心）的距离不超过 D 半径。开球布球与"球在手"摆白球共用。
+    /// </summary>
+    public static Vector3 ClampToD(Vector3 p)
+    {
+        float dx = p.x - BaulkX;                     // D 圆心的 x 就是开球线
+        float dz = p.z;
+        if (dx > 0f) dx = 0f;                        // D 在开球线的开球端一侧，越线即夹回
+        float d = Mathf.Sqrt(dx * dx + dz * dz);
+        if (d > DR) { float s = DR / d; dx *= s; dz *= s; }   // 圆外 → 投影到圆弧上
+        return new Vector3(BaulkX + dx, 0f, dz);
+    }
+
+    /// 某个点是否落在 D 区内（球心约束，同上）。
+    public static bool InD(Vector3 p)
+    {
+        float dx = p.x - BaulkX, dz = p.z;
+        if (dx > 0f) return false;
+        return dx * dx + dz * dz <= DR * DR;
+    }
 
     /// 返回某种球的分值（斯诺克计分规则）。
     /// 白球返回 0（白球落袋走犯规逻辑，不走分值逻辑）。

@@ -26,7 +26,10 @@ public class Bootstrapper : MonoBehaviour
         // 一、全局运行参数
         // -----------------------------------------------------------------
         Application.targetFrameRate = 60;          // 占位，Init 尾部按 GameSettings 应用实际档位
-        Time.fixedDeltaTime = 0.004f;              // 物理步长 4ms=250Hz（v0.29：由 5ms 缩短，高速碰撞更精确）
+        // v0.36：物理步长 4ms → 2ms（500Hz）。加塞的滑动摩擦模型对步长敏感
+        // （打滑阶段每步都要修正线速度与角速度，步长大则自旋修正粗糙），
+        // 同时高速薄球碰撞更精确。CPU 开销翻倍，但只在有球运动时才有意义。
+        Time.fixedDeltaTime = 0.002f;
         Physics.defaultSolverIterations = 14;      // 物理求解器迭代数（默认 6）：球堆挤压更稳定
         Physics.defaultSolverVelocityIterations = 4; // 速度求解迭代（默认 1）：反弹速度更准
 
@@ -131,6 +134,17 @@ public class Bootstrapper : MonoBehaviour
             frictionCombine = PhysicMaterialCombine.Average,   // 两材质参数取平均
             bounceCombine = PhysicMaterialCombine.Average
         };
+        // v0.36 白球专用材质：摩擦取 0 且用 Minimum 合并 —— 白球的"滑→滚"转换与自旋衰减
+        // 全部由 BallController.CueRollStep 的模型负责，若再让 PhysX 施加一遍台呢摩擦，
+        // 就会双重计算把加塞效果（尤其低杆的反向拉扯）几乎抹平。弹性仍为 0.92 保持撞库手感。
+        var cuePM = new PhysicMaterial("cuePM")
+        {
+            dynamicFriction = 0f,
+            staticFriction = 0f,
+            bounciness = 0.92f,
+            frictionCombine = PhysicMaterialCombine.Minimum,
+            bounceCombine = PhysicMaterialCombine.Average
+        };
 
         for (int i = 0; i < 22; i++)
         {
@@ -143,11 +157,13 @@ public class Bootstrapper : MonoBehaviour
             // v0.29 球体材质（哑光版）：粗糙度 0.65 + 金属度 0 —— 哑光酚醛树脂观感，
             // 无刺眼高光、漫反射为主；旧参数(0.25, 0.55)金属感过重，中间版(0.12,0)高光过锐。
             var col = go.GetComponent<SphereCollider>();
-            col.material = ballPM;
+            col.material = kind == BallKind.Cue ? cuePM : ballPM;      // v0.36：白球用零摩擦材质
             var rb = go.AddComponent<Rigidbody>();
             rb.mass = 0.17f;                                          // 真实斯诺克球约 170g
             rb.drag = 0f;                                             // 线性阻尼 0：滚动阻力由脚本给
-            rb.angularDrag = 0.08f;                                   // 轻微角阻尼
+            // 角阻尼：普通球 0.08（轻微）；白球 0 —— 自旋衰减完全由 CueRollStep 的物理模型
+            // 决定（滑移摩擦 + 侧塞阻尼），否则 PhysX 的角阻尼会额外吃掉加塞效果。
+            rb.angularDrag = kind == BallKind.Cue ? 0f : 0.08f;
             rb.interpolation = RigidbodyInterpolation.Interpolate;    // 插值：渲染平滑不抖
             rb.collisionDetectionMode = CollisionDetectionMode.ContinuousDynamic; // 连续碰撞防高速穿透
             var bc = go.AddComponent<BallController>();
@@ -223,6 +239,8 @@ public class Bootstrapper : MonoBehaviour
     void Camera()
     {
         var camGo = new GameObject("MainCamera", typeof(Camera), typeof(AudioListener), typeof(GameCamera));
+        camGo.tag = "MainCamera";       // v0.36：必须打标签，否则 Camera.main 返回 null
+                                        // （SpinPad/拖动白球要把屏幕坐标换算成台面坐标，依赖相机）
         var cam = camGo.GetComponent<Camera>();
         cam.fieldOfView = 52f;
         cam.nearClipPlane = 0.01f;

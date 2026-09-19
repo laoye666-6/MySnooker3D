@@ -1,6 +1,6 @@
 # MySnooker3D 🎱
 
-**双人斯诺克 3D** —— 基于 Unity 的安卓双人同屏斯诺克游戏（当前为 Beta v0.35）。标准比赛尺寸球桌由 Blender
+**双人斯诺克 3D** —— 基于 Unity 的安卓双人同屏斯诺克游戏（当前为 Beta v0.36）。标准比赛尺寸球桌由 Blender
 脚本化建模，真实物理（PhysX + 自定义滚动摩擦），**按 WPBSA 官方规则实现的斯诺克规则**
 （红彩交替、清彩、彩球回点、罚分取值、只剩黑球时的终局判定），可开关辅助瞄准线，
 内置入场运镜动画与设置界面（帧率 / 分辨率 / 阴影）。
@@ -11,9 +11,9 @@ toggleable aiming aids, cinematic intro camera and in-game settings.*
 
 ## 📥 下载安装（Android）
 
-[![Download APK](https://img.shields.io/badge/下载_APK-v0.35_约70MB-brightgreen?style=for-the-badge)](https://github.com/laoye666-6/MySnooker3D/releases/latest)
+[![Download APK](https://img.shields.io/badge/下载_APK-v0.36_约70MB-brightgreen?style=for-the-badge)](https://github.com/laoye666-6/MySnooker3D/releases/latest)
 
-- **直接下载** → **[Snooker3D.apk](https://github.com/laoye666-6/MySnooker3D/releases/download/v0.35/Snooker3D.apk)**（约 70MB）
+- **直接下载** → **[Snooker3D.apk](https://github.com/laoye666-6/MySnooker3D/releases/download/v0.36/Snooker3D.apk)**（约 70MB）
 - 或前往 [**Releases 页面**](https://github.com/laoye666-6/MySnooker3D/releases) 查看全部版本与更新说明
 - **安装步骤**：下载 APK → 传到手机 → 点击安装；首次安装需在系统设置里允许「安装未知来源应用」
 - **系统要求**：Android 7.0+；支持 arm64-v8a 真机与 x86_64 模拟器（MuMu 等）
@@ -120,6 +120,19 @@ blender -b -P blender/make_icon.py      :: 应用图标
 - 更多细节见源码内中文注释
 
 ## 📝 更新记录
+
+### v0.36 —— 球在手 D 区摆球 / 加塞杆法 / 物理步长 2ms
+- **修复："球在手"时无法摆球**。旧版开球与白球落袋后，白球只能由代码放在开球线上的固定点，
+  玩家**无法移动它**。现在开球前与白球摔袋后进入「球在手」状态，**直接按住白球即可在开球区
+  D 内自由拖动摆放**（实时夹在 D 区内、自动与其它球分离重叠），摆好再瞄准出杆。
+- **新增加塞 / 杆法**：右下角「击球点」圆盘，拖动盘内小圆点选择杆头打在白球上的位置 ——
+  圆心中杆、向上**高杆（跟杆）**、向下**低杆（缩杆）**、左右**左右塞**（吃库改角）。
+  物理上白球改用自建的"滑动摩擦 + 自旋耦合"模型（跟杆/低杆是模型自然涌现的结果，
+  不是写死的动画），中杆与旧版手感完全一致。
+- **物理步长 4ms → 2ms（500Hz）**：加塞的自旋修正更细腻，高速薄球碰撞更精确。
+- **修复 v0.35 的回归**：关闭辅助线后幽灵球仍显示在台面上（看起来像多了一颗白球）。
+- 新增离线物理回归 `PhysTest.SpinTest`：中杆/中低杆/低杆/高杆四档手感 + 侧塞数学断言，
+  与规则回归 44 条一同在改动后自动验证。
 
 ### v0.35 —— 补齐剩余官方细则（指定彩球 / 犯规与未击到 / 自由球）
 - **指定彩球 nomination（Rule 3(f)(i)(b)）**：球 on 为彩球时，击球方必须指定打哪一颗。

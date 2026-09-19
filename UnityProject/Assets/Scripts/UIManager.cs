@@ -66,6 +66,9 @@ public class UIManager : MonoBehaviour
     private GameObject replayPanel;
     private CanvasGroup replayCG;
 
+    // ---- v0.36：加塞圆盘 ----
+    private SpinPad spinPad;                              // 击球点选择器（拖动小圆点选高/低杆与左右塞）
+
     // =================================================================================
     // Build()：由 Bootstrapper 调用一次，搭出全部 UI。
     // =================================================================================
@@ -139,6 +142,26 @@ public class UIManager : MonoBehaviour
         Btn("SettingsHudBtn", cgo.transform, new Vector2(0.5f, 0.5f),
             Fit(new Vector2(-540, -364), new Vector2(240, 58)), new Vector2(240, 58),
             new Color(0.20f, 0.23f, 0.32f), ToggleSettings);
+
+        // ---- v0.36：加塞圆盘（击球点选择器）----
+        // 位置在屏幕右下角"力度滑条/击球按钮"的正上方（设计中心 y=700，占 545~855），
+        // 避开下方的力度百分比文字(y≈922)与击球按钮(y≥917)，也避开左侧的重新开局/设置按钮。
+        // 拖动盘内小圆点即可选高杆/低杆/左右塞。
+        var padPanel = Img("SpinPanel", cgo.transform, new Vector2(0.5f, 0.5f),
+            Fit(new Vector2(740, -160), new Vector2(250, 310)), new Vector2(250, 310),
+            new Color(0f, 0f, 0f, 0.42f));
+        // 面板底图与标题只做视觉，不拦截射线：否则玩家在圆盘外围（同属面板矩形内）
+        // 拖动瞄准时会毫无反应 —— 只有圆盘本体需要接收拖动。
+        padPanel.GetComponent<Image>().raycastTarget = false;
+        var padGo = new GameObject("SpinPad", typeof(RectTransform), typeof(CanvasRenderer), typeof(Image), typeof(SpinPad));
+        var padRt = (RectTransform)padGo.transform;
+        padRt.SetParent(padPanel.transform, false);
+        padRt.anchorMin = padRt.anchorMax = new Vector2(0.5f, 0.5f);
+        padRt.anchoredPosition = new Vector2(0f, -8f);
+        padRt.sizeDelta = Vector2.one * 160f;
+        padGo.GetComponent<Image>().color = new Color(0f, 0f, 0f, 0f);   // 外框透明，球面由 SpinPad 自己画
+        spinPad = padGo.GetComponent<SpinPad>();
+        spinPad.Build(padRt, cc, 75f);
 
         // ---- 菜单/结算/设置 共用上层画布 ----
         var mgo = new GameObject("MenuCanvas", typeof(Canvas), typeof(CanvasScaler), typeof(GraphicRaycaster));
@@ -576,6 +599,12 @@ public class UIManager : MonoBehaviour
 
     public void SetMsg(string text, float dur) { ShowMsg(text, dur); }
 
+    /// <summary>
+    /// v0.36：把加塞复位到中杆。换手 / 开新局时调用——
+    /// 否则上一杆的塞会一直留着，玩家会打出自己没想要的杆法。
+    /// </summary>
+    public void ResetSpin() { if (spinPad != null) spinPad.ResetSpin(); }
+
     /// 显隐主菜单（实际淡入淡出由 Update 驱动）。
     public void ShowMenu(bool on) { menuActiveFlag = on; }
 
@@ -678,6 +707,17 @@ public class UIManager : MonoBehaviour
             DrawLabel(FittedRect(374, 1080 - 92, 70, 62), "▶", 30, Fade(Color.white), TextAnchor.MiddleCenter);
             DrawLabel(FittedRect(140, 1080 - 176, 240, 58), "重新开局", 28, Fade(Color.white), TextAnchor.MiddleCenter);
             DrawLabel(FittedRect(420, 1080 - 176, 240, 58), "设 置", 28, Fade(Color.white), TextAnchor.MiddleCenter);
+
+            // ---- v0.36：加塞圆盘文字（与 uGUI 面板逐像素对齐）----
+            // 面板中心设计 y=700、尺寸 250×310；圆盘中心设计 y=708、半径 75
+            DrawLabel(FittedRect(1700, 595, 240, 40), "击球点", 24, Fade(new Color(0.80f, 0.84f, 0.90f)), TextAnchor.MiddleCenter);
+            DrawLabel(FittedRect(1700, 805, 240, 40), spinPad != null ? spinPad.Describe() : "中杆", 26, Fade(new Color(1f, 0.88f, 0.5f)), TextAnchor.MiddleCenter);
+
+            // ---- v0.36："球在手"提示（开球前 / 白球落袋后可在 D 区内拖动白球）----
+            var gmx = GameManager.I;
+            if (gmx != null && gmx.cueInHand)
+                DrawLabel(FittedRect(960, 300, 1100, 52), "球在手：拖动白球可在开球区 D 内自由摆放", 30,
+                    Fade(new Color(0.55f, 0.95f, 0.65f)), TextAnchor.MiddleCenter);
         }
 
         // ---- 主菜单（文字随菜单整体淡入；设置面板打开时再淡出避免与面板重叠）----

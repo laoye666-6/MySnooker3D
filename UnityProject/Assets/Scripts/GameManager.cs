@@ -64,6 +64,10 @@ public class GameManager : MonoBehaviour
     [HideInInspector] public bool canReplay;        // 上一杆判 Miss → 接台方可要求犯规方重打
     private int missCount;                          // 本局连续 Miss 次数（仅日志，未实现三次判负）
 
+    // ---- v0.36：球在手（开球前 / 白球落袋后可在 D 区内自由摆放，Rule 3 开球与 Rule 8 犯规） ----
+    /// 白球当前"球在手"：玩家可拖动白球在开球区 D 内摆放；出杆后自动失效。
+    [HideInInspector] public bool cueInHand;
+
     // ---------------------------------------------------------------------------------
     // 单杆内部记录（每次 Shoot 清空，结算 EvaluateShot 消费）
     // ---------------------------------------------------------------------------------
@@ -122,6 +126,8 @@ public class GameManager : MonoBehaviour
         canReplay = false;
         missCount = 0;
         PlaceAllBalls();
+        cueInHand = true;                                // v0.36：开球前白球"球在手"，可在 D 区内摆放
+        ui.ResetSpin();                                  // v0.36：加塞复位到中杆
         pottedThisShot.Clear();
         ui.ShowMenu(false);
         ui.ShowGameOver(false);
@@ -144,8 +150,8 @@ public class GameManager : MonoBehaviour
     // ---------------------------------------------------------------------------------
     void PlaceAllBalls()
     {
-        cue.Place(new Vector3(G.BaulkX - 0.09f, 0, 0.09f));   // 白球：D 区内偏右下（避开棕球！）
-
+        // 先摆红球与彩球，最后再摆白球：白球的落点要避开其它球（SpotFree 检查），
+        // 所以必须等其它球都到位之后再算（v0.36 起用 FreeInHandPos）。
         var reds = balls.Where(b => b.kind == BallKind.Red).ToList();
         float apex = G.PinkSpot.x + 2 * G.BallR + 0.008f;     // 顶颗红球 X：粉球后 6cm
         float stepX = G.BallR * 1.7320508f + 0.002f;          // 排距（2r·cos30° + 2mm 间隙）
@@ -159,7 +165,31 @@ public class GameManager : MonoBehaviour
         var spots = new[] { G.YellowSpot, G.GreenSpot, G.BrownSpot, G.BlueSpot, G.PinkSpot, G.BlackSpot };
         for (int k = 0; k < 6; k++)
             balls.First(b => b.kind == kinds[k]).Place(spots[k]);
+
+        cue.Place(FreeInHandPos());                           // 白球：D 区内的默认位置（避开棕球！）
         redsLeft = 15;
+    }
+
+    /// <summary>
+    /// v0.36：D 区内的一个空位，作为"球在手"的默认摆放点。
+    /// 首选 (BaulkX-0.09, +0.09) —— 距棕球约 0.127m > 两球半径和，且完全在 D 圆内（历史踩坑 3：
+    /// 白球与棕球同点重生会让 PhysX 炸膛），被占则依次试其它候选点。
+    /// </summary>
+    Vector3 FreeInHandPos()
+    {
+        Vector3[] cands =
+        {
+            new Vector3(G.BaulkX - 0.09f, 0f,  0.09f),
+            new Vector3(G.BaulkX - 0.09f, 0f, -0.09f),
+            new Vector3(G.BaulkX - 0.05f, 0f,  0f),
+            new Vector3(G.BaulkX - 0.15f, 0f,  0f),
+            new Vector3(G.BaulkX - 0.20f, 0f,  0.12f),
+            new Vector3(G.BaulkX - 0.20f, 0f, -0.12f),
+            new Vector3(G.BaulkX - 0.25f, 0f,  0f),
+        };
+        foreach (var c in cands)
+            if (SpotFree(c, cue)) return c;
+        return G.ClampToD(cands[0]);                          // 极端情况：硬放（下同）
     }
 
     // ---------------------------------------------------------------------------------
@@ -223,17 +253,20 @@ public class GameManager : MonoBehaviour
     // 参数：
     //   dir     —— 出杆方向（单位向量，XZ 平面），由瞄准角换算而来
     //   power01 —— 力度滑条值 0~1，线性映射到 [MinShotSpeed, MaxShotSpeed] 的初速
+    //   spinV   —— v0.36 加塞：+1 高杆 / -1 低杆 / 0 中杆（默认值，编辑器测试可直接省略）
+    //   spinH   —— v0.36 加塞：-1 左塞 / +1 右塞 / 0 无塞
     //
-    // 流程：必要时恢复快照 → 切 Rolling 状态 → 清空单杆记录 → 白球唤醒并赋初速 → 记日志。
+    // 流程：必要时恢复快照 → 切 Rolling 状态 → 清空单杆记录 → 白球唤醒并赋初速+自旋 → 记日志。
     // WakeUp 必须调用：白球静置几秒后会休眠，直接赋速度不会让休眠刚体动起来。
     // 三次 Invoke(LogCueVel) 是调试采样（0.2/0.6/1.2 秒后打印白球速度与位置）。
     // ---------------------------------------------------------------------------------
-    public void Shoot(Vector3 dir, float power01)
+    public void Shoot(Vector3 dir, float power01, float spinV = 0f, float spinH = 0f)
     {
         if (state != State.Aiming) return;
         if (SnapshotBroken()) RestoreSnapshot();          // 暂停导致的球位异常先修复
         // v0.35：记录"出杆瞬间是否被斯诺克"，供结算时判定 Miss（Rule 11(b)）
         shotWasSnookered = IsSnookered();
+        cueInHand = false;                                // v0.36：出杆后白球不再"在手"（不能再挪）
         state = State.Rolling;
         rollTimer = 0f;
         firstHit = null;
@@ -243,13 +276,57 @@ public class GameManager : MonoBehaviour
         float sp = Mathf.Lerp(G.MinShotSpeed, G.MaxShotSpeed, Mathf.Clamp01(power01));
         cue.Rb.WakeUp();                                  // 关键：唤醒休眠刚体！
         cue.Rb.velocity = dir * sp;
+        cue.ApplySpin(dir, sp, spinV, spinH);             // v0.36：加塞 → 白球初始角速度
         Invoke(nameof(LogCueVel), 0.2f);
         Invoke(nameof(LogCueVel), 0.6f);
         Invoke(nameof(LogCueVel), 1.2f);
-        Debug.Log(string.Format("[SNOOKER] SHOT p{0} pow={1:F2} speed={2:F2} dir=({3:F4},{4:F4})",
-            cur + 1, power01, sp, dir.x, dir.z));
+        Debug.Log(string.Format("[SNOOKER] SHOT p{0} pow={1:F2} speed={2:F2} dir=({3:F4},{4:F4}) spin v={5:F2} h={6:F2}",
+            cur + 1, power01, sp, dir.x, dir.z, spinV, spinH));
         ui.SetMsg("", 0f);
         UpdateHud();
+    }
+
+    // ---------------------------------------------------------------------------------
+    // v0.36："球在手"时拖动白球（CueController 把手指位置换算成台面世界坐标后调这里）。
+    //   ① 先夹进 D 区（球心不得越过开球线、不得超出 D 圆）
+    //   ② 若与其它球重叠 → 沿"被推开"方向迭代分离，再夹回 D 区
+    //   ③ 只有确实是合法落点才 MoveTo
+    // 每帧都会被调用（拖动中），所以只做最必要的工作。
+    // ---------------------------------------------------------------------------------
+    public void DragCueBall(Vector3 target)
+    {
+        if (!cueInHand || state != State.Aiming || cue == null) return;
+        Vector3 p = G.ClampToD(target);
+        p = SeparateFromBalls(p);
+        p = G.ClampToD(p);
+        cue.MoveTo(p);
+        SaveSnapshot();                       // 摆放后刷新快照，避免暂停恢复时把白球弹回拖动前的位置
+    }
+
+    /// 把点 p 从与其它球的重叠里推出来（最多 8 轮，通常 1 轮就够）。
+    /// 两球必须相距 ≥ 2.05r（留 5% 余量，防止贴放时物理抖动）。
+    Vector3 SeparateFromBalls(Vector3 p)
+    {
+        float minD = G.BallR * 2.05f;
+        for (int iter = 0; iter < 8; iter++)
+        {
+            bool hit = false;
+            foreach (var b in balls)
+            {
+                if (b == cue || b.potted) continue;
+                Vector3 q = b.transform.position;
+                float dx = p.x - q.x, dz = p.z - q.z;
+                float d = Mathf.Sqrt(dx * dx + dz * dz);
+                if (d >= minD) continue;
+                hit = true;
+                if (d < 1e-4f) { dx = 1f; dz = 0f; d = 1f; }   // 完全重合：随便挑个方向推开
+                float need = minD - d;
+                p.x += dx / d * need;
+                p.z += dz / d * need;
+            }
+            if (!hit) break;
+        }
+        return p;
     }
 
     // ---------------------------------------------------------------------------------
@@ -325,6 +402,7 @@ public class GameManager : MonoBehaviour
                 if (b.potted) continue;
                 b.Rb.velocity = Vector3.zero;
                 b.Rb.angularVelocity = Vector3.zero;
+                b.ClearSpin();                            // v0.36：自旋字段也要清，否则模型会写回刚体
             }
             EvaluateShot();
         }
@@ -505,6 +583,7 @@ public class GameManager : MonoBehaviour
             cur = 1 - cur;
             breakScore[cur] = 0;                    // 新一轮击球权，单杆分从零起算
             pairStreak = 0; lastPotKind = null; max147Shown = false;
+            ui.ResetSpin();                         // v0.36：换手 → 加塞复位（新一杆从中杆开始）
             // 新接台方若满足"犯规 + 被斯诺克"，获得自由球资格（Rule 12）
             if (earnedFreeBall)
             {
@@ -682,20 +761,16 @@ public class GameManager : MonoBehaviour
     }
 
     // ---------------------------------------------------------------------------------
-    // 白球重置：优先放棕球置球点（开球线中点），被占用则沿 D 区上下偏移找空位。
-    // 注意棕球点本身常被棕球占着（红球阶段棕球一直在台面），所以几乎总会走偏移分支。
+    // 白球回位（v0.36 改）：白球落袋后按规则"球在手"，须从开球区 D 内击打。
+    // 这里只把它放到 D 区内的一个合法默认位置，随后交给玩家在 D 区内自由拖动摆放
+    // （CueController 拖球 → DragCueBall）。
+    // 注意棕球点常被棕球占着（红球阶段棕球一直在台面），所以默认点取 D 区内偏移处。
     // ---------------------------------------------------------------------------------
     void RespotCue()
     {
-        Vector3 p = G.BrownSpot;
-        if (SpotFree(p, cue)) { cue.Place(p); return; }
-        float[] zs = { 0.06f, -0.06f, 0.12f, -0.12f, 0.18f, -0.18f, 0.24f, -0.24f };
-        foreach (float dz in zs)
-        {
-            Vector3 q = new Vector3(G.BaulkX, 0, dz);
-            if (SpotFree(q, cue)) { cue.Place(q); return; }
-        }
-        cue.Place(p);                                          // 全被占就硬放（极端情况）
+        cue.Place(FreeInHandPos());
+        cueInHand = true;                                      // v0.36：进入"球在手"，玩家可摆放
+        Debug.Log("[SNOOKER] CUE IN HAND (D)");
     }
 
     /// 判断放球点 p 周围是否清空：与任何未落袋球（除 ignore 自己）间距 ≥ 2.05 倍球半径。

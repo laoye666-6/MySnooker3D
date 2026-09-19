@@ -23,6 +23,16 @@ public class AimLine : MonoBehaviour
     private LineRenderer main, obj, defl;         // 三条线：主准线 / 目标球走向 / 白球分离线
     private GameObject ghost;                     // 幽灵球（半透明）
     private Material mainMat, objMat, deflMat;    // 各线的材质（obj 颜色随目标球实时变化）
+    private bool visible;                         // 当前是否允许显示（Show() 设定）
+
+    /// <summary>
+    /// 是否允许显示辅助线（含幽灵球）。v0.36 修复：
+    /// v0.35 为了让"指定彩球"在关闭辅助线时仍然生效，把 Compute() 改成无条件每帧调用，
+    /// 但 Compute 内部命中球时会无条件 `ghost.SetActive(true)` —— 于是玩家关掉辅助线后，
+    /// 幽灵球（半透明白球）照样出现在台面上，看起来像"多了一颗白球"。
+    /// 现在 Compute 只负责几何与位置，显隐一律服从 visible（由 Show 每帧设定）。
+    /// </summary>
+    public bool Visible { get { return visible; } }
 
     /// <summary>
     /// 当前准线指向的那颗球（null = 指向空处/库边）。
@@ -80,8 +90,11 @@ public class AimLine : MonoBehaviour
     }
 
     /// 总开关：显示/隐藏三条线与幽灵球；隐藏时清空顶点。
+    /// 注意 visible 字段：Compute() 每帧都会跑（"指定彩球"需要），
+    /// 它靠这个字段决定要不要显示幽灵球，不能只看 ghost.activeSelf。
     public void Show(bool on)
     {
+        visible = on;
         if (main == null) return;
         main.enabled = obj.enabled = defl.enabled = on;
         if (ghost != null) ghost.SetActive(on);
@@ -150,7 +163,7 @@ public class AimLine : MonoBehaviour
             }
             else defl.positionCount = 0;
             ghost.transform.position = gp;
-            if (!ghost.activeSelf) ghost.SetActive(true);
+            if (ghost.activeSelf != visible) ghost.SetActive(visible);   // v0.36：服从辅助线开关（修复幽灵球残留）
         }
         else if (tc < float.MaxValue)
         {
