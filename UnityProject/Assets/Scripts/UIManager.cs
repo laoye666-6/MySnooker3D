@@ -69,6 +69,22 @@ public class UIManager : MonoBehaviour
     // ---- v0.36：加塞圆盘 ----
     private SpinPad spinPad;                              // 击球点选择器（拖动小圆点选高/低杆与左右塞）
 
+    // ---- v0.38：原神风 UI 配色（深藏青底 + 金色描边/饰件）----
+    // 原神按钮的设计语言：深色半透面板、细金描边、顶部微光、四角小菱饰、主按钮带宝石菱。
+    private static readonly Color GoldLight = new Color(0.96f, 0.85f, 0.50f);   // 高光金
+    private static readonly Color Gold      = new Color(0.80f, 0.65f, 0.30f);   // 主金
+    private static readonly Color GoldDark  = new Color(0.47f, 0.37f, 0.16f);   // 描边金
+    private static readonly Color Navy      = new Color(0.09f, 0.11f, 0.16f, 0.96f); // 按钮底
+    private static readonly Color NavyPanel = new Color(0.07f, 0.09f, 0.13f, 0.97f); // 面板底
+
+    /// 画一个旋转 45° 的小方块（菱形饰件，原风按钮的角饰/宝石）。
+    private GameObject Diamond(Transform parent, Vector2 pos, float size, Color col)
+    {
+        var go = Img("Diamond", parent, new Vector2(0.5f, 0.5f), pos, new Vector2(size, size), col);
+        go.transform.localRotation = Quaternion.Euler(0f, 0f, 45f);
+        return go;
+    }
+
     // =================================================================================
     // Build()：由 Bootstrapper 调用一次，搭出全部 UI。
     // =================================================================================
@@ -126,7 +142,7 @@ public class UIManager : MonoBehaviour
         // 位置同样过 Fit()：4:3 机型上最右"击球"与最左"辅助线"按钮原本会被裁掉。
         Btn("ShootBtn", cgo.transform, new Vector2(0.5f, 0.5f),
             Fit(new Vector2(835, -452), new Vector2(180, 150)), new Vector2(180, 150),
-            new Color(0.16f, 0.55f, 0.25f), cc.BeginStrike);
+            new Color(0.16f, 0.55f, 0.25f), cc.BeginStrike, true);
         Btn("AimHudBtn", cgo.transform, new Vector2(0.5f, 0.5f),
             Fit(new Vector2(-820, -448), new Vector2(240, 62)), new Vector2(240, 62),
             new Color(0.16f, 0.30f, 0.55f), ToggleAim);
@@ -149,9 +165,13 @@ public class UIManager : MonoBehaviour
         // 拖动盘内小圆点即可选高杆/低杆/左右塞。
         var padPanel = Img("SpinPanel", cgo.transform, new Vector2(0.5f, 0.5f),
             Fit(new Vector2(740, -160), new Vector2(250, 310)), new Vector2(250, 310),
-            new Color(0f, 0f, 0f, 0.42f));
-        // 面板底图与标题只做视觉，不拦截射线：否则玩家在圆盘外围（同属面板矩形内）
-        // 拖动瞄准时会毫无反应 —— 只有圆盘本体需要接收拖动。
+            NavyPanel);
+        // v0.40 修复：金描边做成面板的**第一个子物体**（渲染在最底），不要像 v0.38 那样
+        // 先在 cgo 下建边框、再 SetParent 重排 —— 真机上 Edge 会盖住整个面板（面板变金色、
+        // 圆盘子物体全部不可见），而**编辑器里看不出异常**（这正是它一直没被发现的原因）。
+        var padEdge = Img("SpinPanelEdge", padPanel.transform, new Vector2(0.5f, 0.5f),
+            Vector2.zero, new Vector2(258, 318), GoldDark);
+        padEdge.transform.SetAsFirstSibling();          // 沉到最底层，让面板本体压住边框
         padPanel.GetComponent<Image>().raycastTarget = false;
         var padGo = new GameObject("SpinPad", typeof(RectTransform), typeof(CanvasRenderer), typeof(Image), typeof(SpinPad));
         var padRt = (RectTransform)padGo.transform;
@@ -183,16 +203,31 @@ public class UIManager : MonoBehaviour
         menuCG.blocksRaycasts = false;
         menuCG.interactable = false;
 
-        // 金色装饰条（副标题下方左右各一条）
-        Img("BarL", menu.transform, new Vector2(0.5f, 0.5f), new Vector2(-280, -18), new Vector2(150, 6), new Color(1f, 0.84f, 0.35f, 0.9f));
-        Img("BarR", menu.transform, new Vector2(0.5f, 0.5f), new Vector2(280, -18), new Vector2(150, 6), new Color(1f, 0.84f, 0.35f, 0.9f));
+        // 金色装饰条（副标题下方左右各一条，中央一枚菱形宝石 —— v0.38 原神风）
+        Img("BarL", menu.transform, new Vector2(0.5f, 0.5f), new Vector2(-280, -18), new Vector2(150, 5), Gold);
+        Img("BarR", menu.transform, new Vector2(0.5f, 0.5f), new Vector2(280, -18), new Vector2(150, 5), Gold);
+        Diamond(menu.transform, new Vector2(0, -18), 18f, Gold);
+        Diamond(menu.transform, new Vector2(0, -18), 8f, GoldLight);
+        // v0.39：标题上方的"双翼"细金线 + 副标题两端的渐细点，让标题区更像原神的卷轴题头
+        Img("TitleWingL", menu.transform, new Vector2(0.5f, 0.5f), new Vector2(-330, 62), new Vector2(210, 3),
+            new Color(Gold.r, Gold.g, Gold.b, 0.55f));
+        Img("TitleWingR", menu.transform, new Vector2(0.5f, 0.5f), new Vector2(330, 62), new Vector2(210, 3),
+            new Color(Gold.r, Gold.g, Gold.b, 0.55f));
+        Diamond(menu.transform, new Vector2(-440, 62), 10f, Gold);
+        Diamond(menu.transform, new Vector2(440, 62), 10f, Gold);
+
+        // v0.39：HUD 顶栏下沿一条金线（与按钮描边同一金色，统一视觉语言）
+        var topRt = cgo.transform.Find("TopPanel") as RectTransform;
+        if (topRt != null)
+            Img("TopPanelGold", cgo.transform, new Vector2(0.5f, 0.5f),
+                new Vector2(0, 437), new Vector2(topW, 3), new Color(Gold.r, Gold.g, Gold.b, 0.75f));
 
         Btn("AimMenuBtn", menu.transform, new Vector2(0.5f, 0.5f), new Vector2(0, -40), new Vector2(400, 84),
             new Color(0.16f, 0.30f, 0.55f), ToggleAim);
-        Btn("SettingsMenuBtn", menu.transform, new Vector2(0.5f, 0.5f), new Vector2(0, -290), new Vector2(460, 96),
+        Btn("SettingsMenuBtn", menu.transform, new Vector2(0.5f, 0.5f), new Vector2(0, -312), new Vector2(460, 96),
             new Color(0.20f, 0.23f, 0.32f), ToggleSettings);
-        Btn("StartBtn", menu.transform, new Vector2(0.5f, 0.5f), new Vector2(0, -180), new Vector2(460, 116),
-            new Color(0.16f, 0.55f, 0.25f), () => GameManager.I.StartGame());
+        Btn("StartBtn", menu.transform, new Vector2(0.5f, 0.5f), new Vector2(0, -172), new Vector2(460, 116),
+            new Color(0.16f, 0.55f, 0.25f), () => GameManager.I.StartGame(), true);
 
         // ---- 结算面板 ----
         over = StretchImg("Over", mgo.transform, new Color(0f, 0f, 0f, 0.80f));
@@ -214,29 +249,44 @@ public class UIManager : MonoBehaviour
             Vector2.zero, new Vector2(900, 760), new Color(0.09f, 0.12f, 0.15f, 0.97f));
         settingsPanelRT = settingsPanel.GetComponent<RectTransform>();
         // 注意 y 符号：pos.y = 540 - 设计y（设计坐标从顶部往下，uGUI 中心锚定 y 向上）
-        // 版面（自上而下）：标题条 205 → 帧率 380 → 分辨率 530 → 阴影 680 → 完成 835
-        Img("SettingsHeader", settingsRoot.transform, new Vector2(0.5f, 0.5f), new Vector2(0, 335), new Vector2(900, 90),
-            new Color(0.13f, 0.42f, 0.34f));
-        Btn("FpsLeft", settingsRoot.transform, new Vector2(0.5f, 0.5f), new Vector2(-100, 160), new Vector2(110, 72),
+        // 版面（v0.37 四行，自上而下）：标题 205 → 帧率 340 → 分辨率 465 → 阴影 590 →
+        // 物理步长 715 → 完成 845。v0.38：标题条改金描边 + 藏青底。
+        Img("SettingsHeaderEdge", settingsRoot.transform, new Vector2(0.5f, 0.5f), new Vector2(0, 335), new Vector2(900, 90),
+            GoldDark);
+        Img("SettingsHeader", settingsRoot.transform, new Vector2(0.5f, 0.5f), new Vector2(0, 335), new Vector2(892, 82),
+            NavyPanel);
+        Diamond(settingsRoot.transform, new Vector2(-390, 335), 14f, Gold);
+        Diamond(settingsRoot.transform, new Vector2(390, 335), 14f, Gold);
+        Btn("FpsLeft", settingsRoot.transform, new Vector2(0.5f, 0.5f), new Vector2(-100, 200), new Vector2(110, 72),
             new Color(0.20f, 0.23f, 0.32f), () => CycleSetting(0, -1));
-        Btn("FpsRight", settingsRoot.transform, new Vector2(0.5f, 0.5f), new Vector2(330, 160), new Vector2(110, 72),
+        Btn("FpsRight", settingsRoot.transform, new Vector2(0.5f, 0.5f), new Vector2(330, 200), new Vector2(110, 72),
             new Color(0.20f, 0.23f, 0.32f), () => CycleSetting(0, +1));
-        Btn("ResLeft", settingsRoot.transform, new Vector2(0.5f, 0.5f), new Vector2(-100, 10), new Vector2(110, 72),
+        Btn("ResLeft", settingsRoot.transform, new Vector2(0.5f, 0.5f), new Vector2(-100, 75), new Vector2(110, 72),
             new Color(0.20f, 0.23f, 0.32f), () => CycleSetting(1, -1));
-        Btn("ResRight", settingsRoot.transform, new Vector2(0.5f, 0.5f), new Vector2(330, 10), new Vector2(110, 72),
+        Btn("ResRight", settingsRoot.transform, new Vector2(0.5f, 0.5f), new Vector2(330, 75), new Vector2(110, 72),
             new Color(0.20f, 0.23f, 0.32f), () => CycleSetting(1, +1));
-        Btn("ShadowLeft", settingsRoot.transform, new Vector2(0.5f, 0.5f), new Vector2(-100, -140), new Vector2(110, 72),
+        Btn("ShadowLeft", settingsRoot.transform, new Vector2(0.5f, 0.5f), new Vector2(-100, -50), new Vector2(110, 72),
             new Color(0.20f, 0.23f, 0.32f), () => CycleSetting(2, -1));
-        Btn("ShadowRight", settingsRoot.transform, new Vector2(0.5f, 0.5f), new Vector2(330, -140), new Vector2(110, 72),
+        Btn("ShadowRight", settingsRoot.transform, new Vector2(0.5f, 0.5f), new Vector2(330, -50), new Vector2(110, 72),
             new Color(0.20f, 0.23f, 0.32f), () => CycleSetting(2, +1));
-        Btn("SettingsDoneBtn", settingsRoot.transform, new Vector2(0.5f, 0.5f), new Vector2(0, -295), new Vector2(360, 100),
-            new Color(0.16f, 0.55f, 0.25f), ToggleSettings);
+        // v0.37：物理步长三档 0.5/1/2ms（Time.fixedDeltaTime，改了立即生效、持久化）
+        Btn("StepLeft", settingsRoot.transform, new Vector2(0.5f, 0.5f), new Vector2(-100, -175), new Vector2(110, 72),
+            new Color(0.20f, 0.23f, 0.32f), () => CycleSetting(3, -1));
+        Btn("StepRight", settingsRoot.transform, new Vector2(0.5f, 0.5f), new Vector2(330, -175), new Vector2(110, 72),
+            new Color(0.20f, 0.23f, 0.32f), () => CycleSetting(3, +1));
+        Btn("SettingsDoneBtn", settingsRoot.transform, new Vector2(0.5f, 0.5f), new Vector2(0, -305), new Vector2(360, 100),
+            new Color(0.16f, 0.55f, 0.25f), ToggleSettings, true);
+        // v0.38：行间金色分隔细线（原神设置面板的排版语言）
+        Img("Div1", settingsRoot.transform, new Vector2(0.5f, 0.5f), new Vector2(0, 137), new Vector2(780, 2), new Color(Gold.r, Gold.g, Gold.b, 0.35f));
+        Img("Div2", settingsRoot.transform, new Vector2(0.5f, 0.5f), new Vector2(0, 12), new Vector2(780, 2), new Color(Gold.r, Gold.g, Gold.b, 0.35f));
+        Img("Div3", settingsRoot.transform, new Vector2(0.5f, 0.5f), new Vector2(0, -113), new Vector2(780, 2), new Color(Gold.r, Gold.g, Gold.b, 0.35f));
+        Img("Div4", settingsRoot.transform, new Vector2(0.5f, 0.5f), new Vector2(0, -238), new Vector2(780, 2), new Color(Gold.r, Gold.g, Gold.b, 0.35f));
 
-        // ---- 147 满分提示横幅（金色描边 + 深色底，平时藏在屏幕外）----
+        // ---- 147 满分提示横幅（金描边 + 藏青底，平时藏在屏幕外）----
         var popup = Img("Popup147", mgo.transform, new Vector2(0.5f, 0.5f), new Vector2(0, -270), new Vector2(1150, 150),
-            new Color(1f, 0.84f, 0.35f));
+            Gold);
         Img("PopupIn", popup.transform, new Vector2(0.5f, 0.5f), Vector2.zero, new Vector2(1130, 134),
-            new Color(0.07f, 0.09f, 0.11f, 0.97f));
+            NavyPanel);
         popupRT = popup.GetComponent<RectTransform>();
         popupCG = popup.AddComponent<CanvasGroup>();
         popupCG.alpha = 0f;
@@ -245,9 +295,9 @@ public class UIManager : MonoBehaviour
         // ---- v0.35：让对手重打 提示框（判 Miss 后显示，Rule 11(b)）----
         // 位置在屏幕中下方（不遮挡球堆与瞄准区），两个按钮左右并排
         replayPanel = Img("ReplayPanel", mgo.transform, new Vector2(0.5f, 0.5f), new Vector2(0, -300), new Vector2(1160, 210),
-            new Color(1f, 0.80f, 0.25f));                                  // 金色描边
+            Gold);                                                         // 金色描边
         Img("ReplayIn", replayPanel.transform, new Vector2(0.5f, 0.5f), Vector2.zero, new Vector2(1140, 190),
-            new Color(0.07f, 0.09f, 0.11f, 0.97f));
+            NavyPanel);
         Btn("ReplayYes", replayPanel.transform, new Vector2(0.5f, 0.5f), new Vector2(-290, -52), new Vector2(520, 84),
             new Color(0.16f, 0.45f, 0.62f), ChooseReplay);
         Btn("ReplayNo", replayPanel.transform, new Vector2(0.5f, 0.5f), new Vector2(290, -52), new Vector2(520, 84),
@@ -407,7 +457,7 @@ public class UIManager : MonoBehaviour
     // ---------------------------------------------------------------------------------
     void ToggleSettings() { settingsOpen = !settingsOpen; settingsAnimT = Mathf.Clamp01(settingsAnimT); }
 
-    /// kind: 0=帧率 1=分辨率 2=阴影；dir=+1/-1 循环方向。改完立即生效并持久化。
+    /// kind: 0=帧率 1=分辨率 2=阴影 3=物理步长(v0.37)；dir=+1/-1 循环方向。改完立即生效并持久化。
     void CycleSetting(int kind, int dir)
     {
         if (kind == 0)
@@ -417,6 +467,10 @@ public class UIManager : MonoBehaviour
         else if (kind == 1)
         {
             GameSettings.ResIndex = (GameSettings.ResIndex + dir + GameSettings.ResOptions.Length) % GameSettings.ResOptions.Length;
+        }
+        else if (kind == 3)
+        {
+            GameSettings.StepIndex = (GameSettings.StepIndex + dir + GameSettings.StepOptions.Length) % GameSettings.StepOptions.Length;
         }
         else
         {
@@ -500,24 +554,43 @@ public class UIManager : MonoBehaviour
         return go;
     }
 
-    /// 美化版按钮：深色描边底（外扩 10px）+ 主体 + 顶部高光条，三层结构。
+    /// 美化版按钮（v0.38 原神风）：金色细描边 + 深藏青渐变底 + 四角菱形饰钉。
+    /// primary=true 时左侧再加一枚"宝石菱"（外金内白），用于主操作按钮（开始游戏/击球/完成）。
     private void Btn(string name, Transform parent, Vector2 anchor, Vector2 pos, Vector2 size, Color bg, UnityEngine.Events.UnityAction onClick)
     {
-        Color edge = new Color(bg.r * 0.45f, bg.g * 0.45f, bg.b * 0.45f, 1f);   // 描边=主体色加深
-        Img(name + "Edge", parent, anchor, pos, size + new Vector2(10, 10), edge);
-        var go = Img(name, parent, anchor, pos, size, bg);
-        // 顶部高光条：宽 = 主体宽 - 28，贴主体内侧上沿，营造轻微立体感
-        Img(name + "Hi", go.transform, new Vector2(0.5f, 0.5f),
-            new Vector2(0, size.y / 2f - 7), new Vector2(size.x - 28, 6), new Color(1f, 1f, 1f, 0.16f));
+        Btn(name, parent, anchor, pos, size, bg, onClick, false);
+    }
+
+    private void Btn(string name, Transform parent, Vector2 anchor, Vector2 pos, Vector2 size, Color bg, UnityEngine.Events.UnityAction onClick, bool primary)
+    {
+        Img(name + "Edge", parent, anchor, pos, size + new Vector2(8, 8), GoldDark);   // 金描边
+        var go = Img(name, parent, anchor, pos, size, Navy);                            // 藏青底
+        // 渐变：顶部微光条 + 底部阴影条（模拟原神按钮的上亮下暗）
+        Img(name + "Sheen", go.transform, new Vector2(0.5f, 0.5f),
+            new Vector2(0, size.y * 0.36f), new Vector2(size.x - 8, size.y * 0.26f), new Color(1f, 1f, 1f, 0.07f));
+        Img(name + "Shade", go.transform, new Vector2(0.5f, 0.5f),
+            new Vector2(0, -size.y * 0.37f), new Vector2(size.x - 8, size.y * 0.24f), new Color(0f, 0f, 0f, 0.22f));
+        // 四角菱形饰钉
+        float dx = size.x * 0.5f - 10f, dy = size.y * 0.5f - 10f;
+        Diamond(go.transform, new Vector2(-dx,  dy), 9f, Gold);
+        Diamond(go.transform, new Vector2( dx,  dy), 9f, Gold);
+        Diamond(go.transform, new Vector2(-dx, -dy), 9f, Gold);
+        Diamond(go.transform, new Vector2( dx, -dy), 9f, Gold);
+        // 主操作按钮：左侧宝石菱（外金内白芯）
+        if (primary)
+        {
+            Diamond(go.transform, new Vector2(-size.x * 0.5f + 24f, 0f), 16f, Gold);
+            Diamond(go.transform, new Vector2(-size.x * 0.5f + 24f, 0f), 7f, GoldLight);
+        }
         var b = go.AddComponent<Button>();
         var colors = b.colors;
-        colors.pressedColor = new Color(0.75f, 0.9f, 1f);       // 按下高亮
+        colors.pressedColor = new Color(1.0f, 0.9f, 0.55f);       // 按下泛金
         colors.fadeDuration = 0.08f;
         b.colors = colors;
         b.onClick.AddListener(onClick);
     }
 
-    /// 力度滑条（手动搭结构：底框/轨道/橙色填充/白色滑块）。
+    /// 力度滑条（v0.38 原神风：金描边轨道 + 金色填充 + 菱形手柄）。
     private Slider MakeSlider(Transform parent, Vector2 anchor, Vector2 pos, Vector2 size)
     {
         var go = new GameObject("Power", typeof(RectTransform), typeof(CanvasRenderer), typeof(Image), typeof(Slider));
@@ -526,14 +599,14 @@ public class UIManager : MonoBehaviour
         rt.anchorMin = rt.anchorMax = anchor;
         rt.anchoredPosition = pos;
         rt.sizeDelta = size;
-        go.GetComponent<Image>().color = new Color(0f, 0f, 0f, 0.45f);
+        go.GetComponent<Image>().color = GoldDark;               // 外框=描边金
 
         var bgGo = new GameObject("BG", typeof(RectTransform), typeof(CanvasRenderer), typeof(Image));
         var bgRt = (RectTransform)bgGo.transform;
         bgRt.SetParent(rt, false);
         bgRt.anchorMin = Vector2.zero; bgRt.anchorMax = Vector2.one;
-        bgRt.offsetMin = new Vector2(4, 14); bgRt.offsetMax = new Vector2(-4, -14);
-        bgGo.GetComponent<Image>().color = new Color(0.30f, 0.33f, 0.38f, 1f);
+        bgRt.offsetMin = new Vector2(3, 13); bgRt.offsetMax = new Vector2(-3, -13);
+        bgGo.GetComponent<Image>().color = Navy;                 // 轨道=藏青
 
         var fillArea = new GameObject("FillArea", typeof(RectTransform));
         var faRt = (RectTransform)fillArea.transform;
@@ -546,7 +619,7 @@ public class UIManager : MonoBehaviour
         fRt.SetParent(faRt, false);
         fRt.anchorMin = Vector2.zero; fRt.anchorMax = Vector2.one;
         fRt.sizeDelta = Vector2.zero;
-        fill.GetComponent<Image>().color = new Color(0.95f, 0.65f, 0.1f, 1f);
+        fill.GetComponent<Image>().color = Gold;                 // 填充=主金
 
         var handleArea = new GameObject("HandleArea", typeof(RectTransform));
         var haRt = (RectTransform)handleArea.transform;
@@ -554,12 +627,15 @@ public class UIManager : MonoBehaviour
         haRt.anchorMin = Vector2.zero; haRt.anchorMax = Vector2.one;
         haRt.offsetMin = new Vector2(10, 0); haRt.offsetMax = new Vector2(-10, 0);
 
+        // 手柄本体透明（Slider 需要一个 handleRect），视觉用菱形宝石：外金内白
         var handle = new GameObject("Handle", typeof(RectTransform), typeof(CanvasRenderer), typeof(Image));
         var hRt = (RectTransform)handle.transform;
         hRt.SetParent(haRt, false);
         hRt.anchorMin = new Vector2(0.5f, 0f); hRt.anchorMax = new Vector2(0.5f, 1f);
-        hRt.sizeDelta = new Vector2(26, 0);
-        handle.GetComponent<Image>().color = new Color(1f, 0.9f, 0.7f, 1f);
+        hRt.sizeDelta = new Vector2(30, 0);
+        handle.GetComponent<Image>().color = Color.clear;
+        Diamond(handle.transform, Vector2.zero, 34f, Gold);
+        Diamond(handle.transform, Vector2.zero, 15f, GoldLight);
 
         var s = go.GetComponent<Slider>();
         s.fillRect = fRt;
@@ -697,7 +773,10 @@ public class UIManager : MonoBehaviour
             DrawLabel(FittedRect(1585, 48, 90, 76), "单杆", 22, dimGray, TextAnchor.MiddleRight);                  // 右边缘 1630
             DrawLabel(FittedRect(1435, 48, 190, 76), p2Break, 46, breakGold, TextAnchor.MiddleRight);              // 右边缘 1530
             DrawLabel(FittedRect(960, 48, 900, 76), centerText, 28, Fade(new Color(1f, 0.92f, 0.6f)), TextAnchor.MiddleCenter);
-            DrawLabel(FittedRect(960, 160, 1400, 64), msgText, 36, Fade(new Color(1f, 0.85f, 0.25f)), TextAnchor.MiddleCenter);
+            // v0.38：设置面板打开时不再画"XX 击球"提示——IMGUI 永远画在 uGUI 之上，
+            // 会穿透设置面板标题条（真机截图确认）。同理下方"球在手"提示也受此保护。
+            if (settingsAlpha < 0.4f)
+                DrawLabel(FittedRect(960, 160, 1400, 64), msgText, 36, Fade(new Color(1f, 0.85f, 0.25f)), TextAnchor.MiddleCenter);
             DrawLabel(FittedRect(1560, 922, 300, 44), powerText, 28, Fade(Color.white), TextAnchor.MiddleCenter);
 
             // ---- HUD 按钮文字（与上面 Btn/Fit 的位置逐一对齐）----
@@ -715,7 +794,7 @@ public class UIManager : MonoBehaviour
 
             // ---- v0.36："球在手"提示（开球前 / 白球落袋后可在 D 区内拖动白球）----
             var gmx = GameManager.I;
-            if (gmx != null && gmx.cueInHand)
+            if (gmx != null && gmx.cueInHand && settingsAlpha < 0.4f)
                 DrawLabel(FittedRect(960, 300, 1100, 52), "球在手：拖动白球可在开球区 D 内自由摆放", 30,
                     Fade(new Color(0.55f, 0.95f, 0.65f)), TextAnchor.MiddleCenter);
         }
@@ -751,22 +830,27 @@ public class UIManager : MonoBehaviour
 
             DrawLabel(CRect(960 + sox, 205, 400, 70), "设 置", 42, gold, TextAnchor.MiddleCenter);
 
-            DrawLabel(CRect(700 + sox, 380, 260, 56), "帧率上限", 30, gray, TextAnchor.MiddleRight);
-            DrawLabel(CRect(1075 + sox, 380, 340, 64), GameSettings.FpsText, 40, w, TextAnchor.MiddleCenter);
-            DrawLabel(CRect(860 + sox, 380, 110, 72), "◀", 30, w, TextAnchor.MiddleCenter);
-            DrawLabel(CRect(1290 + sox, 380, 110, 72), "▶", 30, w, TextAnchor.MiddleCenter);
+            DrawLabel(CRect(700 + sox, 340, 260, 56), "帧率上限", 30, gray, TextAnchor.MiddleRight);
+            DrawLabel(CRect(1075 + sox, 340, 340, 64), GameSettings.FpsText, 40, w, TextAnchor.MiddleCenter);
+            DrawLabel(CRect(860 + sox, 340, 110, 72), "◀", 30, w, TextAnchor.MiddleCenter);
+            DrawLabel(CRect(1290 + sox, 340, 110, 72), "▶", 30, w, TextAnchor.MiddleCenter);
 
-            DrawLabel(CRect(700 + sox, 530, 260, 56), "渲染分辨率", 30, gray, TextAnchor.MiddleRight);
-            DrawLabel(CRect(1075 + sox, 530, 340, 64), GameSettings.ResText, 40, w, TextAnchor.MiddleCenter);
-            DrawLabel(CRect(860 + sox, 530, 110, 72), "◀", 30, w, TextAnchor.MiddleCenter);
-            DrawLabel(CRect(1290 + sox, 530, 110, 72), "▶", 30, w, TextAnchor.MiddleCenter);
+            DrawLabel(CRect(700 + sox, 465, 260, 56), "渲染分辨率", 30, gray, TextAnchor.MiddleRight);
+            DrawLabel(CRect(1075 + sox, 465, 340, 64), GameSettings.ResText, 40, w, TextAnchor.MiddleCenter);
+            DrawLabel(CRect(860 + sox, 465, 110, 72), "◀", 30, w, TextAnchor.MiddleCenter);
+            DrawLabel(CRect(1290 + sox, 465, 110, 72), "▶", 30, w, TextAnchor.MiddleCenter);
 
-            DrawLabel(CRect(700 + sox, 680, 260, 56), "画面阴影", 30, gray, TextAnchor.MiddleRight);
-            DrawLabel(CRect(1075 + sox, 680, 340, 64), GameSettings.ShadowText, 40, w, TextAnchor.MiddleCenter);
-            DrawLabel(CRect(860 + sox, 680, 110, 72), "◀", 30, w, TextAnchor.MiddleCenter);
-            DrawLabel(CRect(1290 + sox, 680, 110, 72), "▶", 30, w, TextAnchor.MiddleCenter);
+            DrawLabel(CRect(700 + sox, 590, 260, 56), "画面阴影", 30, gray, TextAnchor.MiddleRight);
+            DrawLabel(CRect(1075 + sox, 590, 340, 64), GameSettings.ShadowText, 40, w, TextAnchor.MiddleCenter);
+            DrawLabel(CRect(860 + sox, 590, 110, 72), "◀", 30, w, TextAnchor.MiddleCenter);
+            DrawLabel(CRect(1290 + sox, 590, 110, 72), "▶", 30, w, TextAnchor.MiddleCenter);
 
-            DrawLabel(CRect(960 + sox, 835, 360, 100), "完 成", 40, w, TextAnchor.MiddleCenter);
+            DrawLabel(CRect(700 + sox, 715, 260, 56), "物理步长", 30, gray, TextAnchor.MiddleRight);
+            DrawLabel(CRect(1075 + sox, 715, 340, 64), GameSettings.StepText, 40, w, TextAnchor.MiddleCenter);
+            DrawLabel(CRect(860 + sox, 715, 110, 72), "◀", 30, w, TextAnchor.MiddleCenter);
+            DrawLabel(CRect(1290 + sox, 715, 110, 72), "▶", 30, w, TextAnchor.MiddleCenter);
+
+            DrawLabel(CRect(960 + sox, 845, 360, 100), "完 成", 40, w, TextAnchor.MiddleCenter);
         }
 
         // ---- 147 满分提示横幅（文字随横幅从底部弹入）----
@@ -798,8 +882,9 @@ public class UIManager : MonoBehaviour
         }
 
         // ---- v0.35：自由球 / 指定彩球 状态提示（HUD 中央行下方）----
+        // v0.38：设置面板打开时隐藏（IMGUI 在 uGUI 之上，否则会穿透面板）
         var gm = GameManager.I;
-        if (gm != null && gm.state == GameManager.State.Aiming)
+        if (gm != null && gm.state == GameManager.State.Aiming && settingsAlpha < 0.4f)
         {
             if (gm.freeBallActive)
                 DrawLabel(CRect(960, 240, 900, 52), "自由球：可指定任意一颗球作为球 on",

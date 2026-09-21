@@ -27,8 +27,9 @@ public class Bootstrapper : MonoBehaviour
         // -----------------------------------------------------------------
         Application.targetFrameRate = 60;          // 占位，Init 尾部按 GameSettings 应用实际档位
         // v0.36：物理步长 4ms → 2ms（500Hz）。加塞的滑动摩擦模型对步长敏感
-        // （打滑阶段每步都要修正线速度与角速度，步长大则自旋修正粗糙），
-        // 同时高速薄球碰撞更精确。CPU 开销翻倍，但只在有球运动时才有意义。
+        // （打滑阶段每步都要修正线速度与角速度，步长大则自旋修正粗糙）。
+        // v0.37：这只是默认值——Init 尾部 GameSettings.Apply() 会按用户存档的
+        // 步长档位（0.5/1/2ms）覆盖此处。
         Time.fixedDeltaTime = 0.002f;
         Physics.defaultSolverIterations = 14;      // 物理求解器迭代数（默认 6）：球堆挤压更稳定
         Physics.defaultSolverVelocityIterations = 4; // 速度求解迭代（默认 1）：反弹速度更准

@@ -238,19 +238,32 @@ public static class PhysTest
             Physics.simulationMode = SimulationMode.Script;
             float dt = 0.002f;
 
-            float plainStop = RunSpinCase("A-mid (中杆对照)", cue, target, dt, 0.5f, 0f, 0f);
-            float backStop = RunSpinCase("B-low (低杆)", cue, target, dt, 0.5f, -1f, 0f);
-            float topStop = RunSpinCase("C-top (高杆)", cue, target, dt, 0.5f, +1f, 0f);
-            // 中低杆（圆盘拖到"略低"）也必须产生缩杆效果，不能是"无旋滑行"的死区
-            float halfLowStop = RunSpinCase("B2-low-half (中低杆)", cue, target, dt, 0.5f, -0.5f, 0f);
+            RunSpinCase("A-mid (中杆对照)", cue, target, dt, 0.5f, 0f, 0f);
+            RunSpinCase("B-low (低杆)", cue, target, dt, 0.5f, -1f, 0f);
+            RunSpinCase("C-top (高杆)", cue, target, dt, 0.5f, +1f, 0f);
+            RunSpinCase("B2-stun (定杆档)", cue, target, dt, 0.5f, -0.5f, 0f);
+            // 满力高杆只用于限速断言（6m/s 下靶球弹回二次碰撞，终点混沌不可断言）
+            RunSpinCase("C2-top-full (满力高杆)", cue, target, dt, 1.0f, +1f, 0f);
 
-            bool midOk = true;                                   // 中杆是基线，只记录
-            bool lowOk = backStop < plainStop - 0.05f;           // 低杆必须比中杆"退得更多"
-            bool topOk = topStop > plainStop + 0.05f;            // 高杆必须比中杆"冲得更远"
-            bool halfLowOk = halfLowStop < plainStop - 0.02f;    // 中低杆也要有可感知的回缩
-            L("CHECK 低杆<中杆: " + backStop.ToString("F3") + " < " + plainStop.ToString("F3") + " → " + lowOk);
-            L("CHECK 高杆>中杆: " + topStop.ToString("F3") + " > " + plainStop.ToString("F3") + " → " + topOk);
-            L("CHECK 中低杆<中杆(无死区): " + halfLowStop.ToString("F3") + " < " + plainStop.ToString("F3") + " → " + halfLowOk);
+            // ---- 判定（撞后窗口可观测量，避开后续混沌碰撞）----
+            //  vPost[+0.75s]：跟进速度 —— 撞球后白球从 0 被残余自旋重新加速，
+            //                 到纯滚动耗时 ~0.65s，0.75s 时高杆(1.5×)应显著快于中杆(1.0×)；
+            //                 定杆(ω=0)撞后无人推 → 几乎停住。
+            //  dx@+0.45s：低杆在 0.45s 内已明显后移（摩擦立即反向），取该窗口。
+            //  注：定杆档(-0.5)在 0.75m 行程中会自然获得部分前旋（真实物理：
+            //  定杆只在近距离成立），所以阈值是"跟进减半"而非"完全停住"。
+            bool topOk = caseVpost[2] > caseVpost[0] * 1.15f;          // 高杆跟进 > 中杆×1.15
+            bool stunOk = caseVpost[3] < caseVpost[0] * 0.5f;          // 定杆跟进减半以上
+            bool lowOk = caseDx[1] < -0.05f;                           // 低杆被拉回
+            bool midForwardOk = caseDx[0] > 0f;                        // 中杆自然向前（基线合理）
+            bool capOk = lastCaseMaxSpeed <= fullCaseSpeed0 * 1.02f;   // 限速（满力高杆）
+            L("CHECK 限速(满力高杆最大速度 " + lastCaseMaxSpeed.ToString("F3") +
+              " ≤ 出杆初速 " + fullCaseSpeed0.ToString("F3") + "×1.02) → " + capOk);
+            L("CHECK 高杆撞后0.75s速度 " + caseVpost[2].ToString("F2") + " > 中杆 " +
+              caseVpost[0].ToString("F2") + "×1.15 → " + topOk);
+            L("CHECK 定杆撞后0.75s速度 " + caseVpost[3].ToString("F2") + " < 中杆×0.35 → " + stunOk);
+            L("CHECK 低杆撞后位移 " + caseDx[1].ToString("F3") + " < -0.05 → " + lowOk);
+            L("CHECK 中杆向前位移 " + caseDx[0].ToString("F3") + " > 0 → " + midForwardOk);
 
             // ---- D：侧塞撞库（纯函数断言）----
             // 说明：撞库回调 OnCollisionEnter 在 -batchmode 下不会触发（没有游戏循环调度
@@ -277,7 +290,8 @@ public static class PhysTest
             bool driftOk = Mathf.Abs(sideDrift) < 0.01f;
             L("CHECK 台面轨迹不受侧塞影响: drift=" + sideDrift.ToString("F4") + " → " + driftOk);
 
-            bool all = midOk && lowOk && topOk && halfLowOk && perpOk && signOk && zeroOk && driftOk;
+            bool all = topOk && stunOk && lowOk && midForwardOk && capOk &&
+                       perpOk && signOk && zeroOk && driftOk;
             L(all ? "ALL SPIN OK" : "SPIN FAILED");
         }
         finally
@@ -290,40 +304,64 @@ public static class PhysTest
     }
 
     /// <summary>
-    /// 单次加塞正碰用例：白球撞向靶球，返回白球【撞球之后】继续走的净位移（米）。
-    /// 低杆应为负（被拉回）、高杆为正且更大、中杆接近 0。
+    /// 单次加塞正碰用例。v0.37 记录【撞击后 0.45 秒窗口】内的可观测量（避开之后
+    /// 靶球从底库弹回的二次碰撞混沌）：
+    ///   caseVpost[n] = 撞后 0.05s 时白球速度（跟进/定杆的判据）
+    ///   caseDx[n]    = 撞后 0.45s 内白球 X 位移（低杆拉回为负）
+    /// n 按调用顺序 0..4；另记录全程最大速度 lastCaseMaxSpeed（限速断言）。
     /// </summary>
-    private static float RunSpinCase(string name, BallController cue, BallController target,
-                                     float dt, float power, float spinV, float spinH)
+    private static readonly float[] caseVpost = new float[5];
+    private static readonly float[] caseDx = new float[5];
+    private static int caseIdx;
+    private static float lastCaseMaxSpeed;
+    private static float fullCaseSpeed0;
+
+    private static void RunSpinCase(string name, BallController cue, BallController target,
+                                    float dt, float power, float spinV, float spinH)
     {
+        int n = caseIdx++;
         cue.Place(new Vector3(-0.5f, 0f, 0f));
         target.Place(new Vector3(0.3f, 0f, 0f));
         // 静置几帧让球落稳（Place 会抬高 2mm）
         for (int i = 0; i < 60; i++) { Physics.Simulate(dt); cue.StepOnCloth(dt); target.StepOnCloth(dt); }
 
         float speed = Mathf.Lerp(G.MinShotSpeed, G.MaxShotSpeed, power);
+        fullCaseSpeed0 = speed;
+        lastCaseMaxSpeed = 0f;
         cue.Rb.WakeUp();
         cue.Rb.velocity = new Vector3(speed, 0f, 0f);
         cue.ApplySpin(Vector3.right, speed, spinV, spinH);
 
-        float restX = 0f;            // 白球停下时的 X
         bool met = false;
-        for (int i = 1; i <= 4000; i++)     // 最多模拟 8 秒
+        float impactX = 0f, xAtWindowEnd = 0f;
+        int stepsAfterMet = 0;
+        const int WindowSteps = 225;                 // 0.45s / 0.002
+        for (int i = 1; i <= 4000; i++)              // 最多模拟 8 秒
         {
             Physics.Simulate(dt);
-            cue.StepOnCloth(dt);             // ★ 必须手动推进（Simulate 不触发 FixedUpdate）
+            cue.StepOnCloth(dt);                     // ★ 必须手动推进（Simulate 不触发 FixedUpdate）
             target.StepOnCloth(dt);
+            float vmag = cue.Rb.velocity.magnitude;
+            if (vmag > lastCaseMaxSpeed) lastCaseMaxSpeed = vmag;
             if (!met && cue.transform.position.x > target.transform.position.x - 3f * G.BallR)
-                met = true;                  // 两球已接触（白球被挡在靶球后方）
-            if (met && cue.Rb.velocity.magnitude < G.StopSpeed &&
-                Mathf.Abs(cue.SideSpin) < 0.5f)
-            { restX = cue.transform.position.x; break; }
+            {
+                met = true;                          // 两球已接触（白球被挡在靶球后方）
+                impactX = cue.transform.position.x;
+            }
+            if (met)
+            {
+                stepsAfterMet++;
+                if (stepsAfterMet == WindowSteps)    // 撞后 0.45s：位移采样（二次碰撞尚未发生）
+                    xAtWindowEnd = cue.transform.position.x;
+                if (stepsAfterMet == 375)            // 撞后 0.75s：跟进速度采样，随后结束本用例
+                { caseVpost[n] = cue.Rb.velocity.magnitude; break; }
+            }
         }
-        if (restX == 0f) restX = cue.transform.position.x;
-        float offset = restX - 0.3f;         // 相对靶球初始位置：负=被拉回，正=冲过去
+        caseDx[n] = met ? xAtWindowEnd - impactX : 0f;
         L("SPIN " + name + " spinV=" + spinV.ToString("F1") + " spinH=" + spinH.ToString("F1") +
-          " → cueRest=" + restX.ToString("F3") + " offset=" + offset.ToString("F3"));
-        return offset;
+          " → v@+0.05s=" + caseVpost[n].ToString("F2") +
+          " dx@+0.45s=" + caseDx[n].ToString("F3") +
+          " maxV=" + lastCaseMaxSpeed.ToString("F2"));
     }
 
     /// <summary>

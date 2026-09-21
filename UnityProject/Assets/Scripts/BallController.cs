@@ -38,6 +38,10 @@ public class BallController : MonoBehaviour
     /// 分量含义：竖直分量 ω_y = 左右塞；水平分量 = 高低杆（相对当前滚动方向的"附加自旋"）。
     private Vector3 spin;
 
+    /// v0.37：本杆的出杆初速（m/s）。限速用——用户约束"白球任何时刻的速度不得超过
+    /// 出杆初速"（高杆滑移加速时在此钳死）。随 ApplySpin 每杆刷新。
+    private float shotSpeed0;
+
     /// 自旋的可读副本（调试/HUD 用）。
     public Vector3 Spin { get { return spin; } }
 
@@ -151,9 +155,9 @@ public class BallController : MonoBehaviour
     /// 角速度按滚动基准换算（baseW = v / r）：
     ///   高低杆 = (1 + spinV·K) × baseW，沿 (up × dir) 轴 —— spinV=0 时正好是纯滚动，
     ///   所以"中杆"与旧版行为完全一致（这是不回归的关键）。
-    ///   高杆用 SpinTopK、低杆用 SpinLowK（见 G.cs 的说明：低杆侧必须更强，
-    ///   否则玩家拖到"低杆"却只得到无旋滑行）。
-    ///   左右塞 = +spinH·SpinSideK × baseW，沿世界 +Y 轴。符号由力偶推导得出：
+    ///   v0.37 定标（真实杆头击点极限，见 G.cs）：高杆 K=0.25（ω≤1.25×滚动），
+    ///   低杆 K=2.0（ω≥-1.0×滚动 纯倒旋；spinV=-0.5 恰为 ω=0 的定杆 stun）。
+    ///   左右塞 = spinH·SpinSideK × baseW，沿世界 +Y 轴。符号由力偶推导得出：
     ///   俯视看击球点在中心右侧（右塞）时，杆头对白球的力矩 τ = r × F 指向 +Y
     ///   （r 指向球心右侧、F 沿出杆方向），故右塞 spinH=+1 → ω_y > 0。
     /// </summary>
@@ -163,9 +167,10 @@ public class BallController : MonoBehaviour
         Vector3 d = new Vector3(dir.x, 0f, dir.z);
         if (d.sqrMagnitude < 1e-8f) return;
         d.Normalize();
+        shotSpeed0 = speed;                              // v0.37：限速基准 = 出杆初速
         float baseW = speed / G.BallR;
         float v01 = Mathf.Clamp(spinV, -1f, 1f);
-        float k = v01 >= 0f ? G.SpinTopK : G.SpinLowK;    // 低杆侧更强（G.cs 有说明）
+        float k = v01 >= 0f ? G.SpinTopK : G.SpinLowK;   // 高/低杆各自的真实极限（G.cs）
         Vector3 rollAxis = Vector3.Cross(Vector3.up, d);          // = up × dir（单位向量）
         spin = rollAxis * (baseW * (1f + v01 * k))
              + Vector3.up * (Mathf.Clamp(spinH, -1f, 1f) * G.SpinSideK * baseW);
@@ -318,6 +323,13 @@ public class BallController : MonoBehaviour
             Vector3 uHat = u / uMag;
             v -= uHat * (G.SlipDecel * dt);
             spin += Vector3.Cross(Vector3.up, uHat) * (2.5f * G.SlipDecel * dt / G.BallR);
+
+            // ---- v0.37 限速（用户约束）：高杆滑移加速时，白球速度不得快过出杆初速 ----
+            // 只钳速度、【不】动自旋：多余的自旋仍按滑动摩擦的正常速率被台呢消耗
+            // （下一步的力偶项会削 ω）。若这里顺手把自旋写回纯滚动，会把高杆的
+            // 跟进效果瞬间清零（v0.37 首测踩到：高杆手感与中杆完全相同）。
+            if (v.magnitude > shotSpeed0)
+                v = v.normalized * shotSpeed0;
         }
         else
         {

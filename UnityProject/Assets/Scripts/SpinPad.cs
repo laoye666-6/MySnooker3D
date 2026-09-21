@@ -32,7 +32,7 @@ public class SpinPad : MonoBehaviour, IPointerDownHandler, IDragHandler, IPointe
 
     private RectTransform dot;          // 可拖动的小圆点
     private RectTransform ring;         // 圆盘本体（用于把屏幕坐标换算成局部坐标）
-    private Image dotImg;
+    private Image dotImg;       // 可拖动的圆点（纯色块 Image，真机兼容性最好）
     private float dragging;             // >0 表示正在拖动（用于放大圆点反馈）
 
     /// 归一化击球点：spinH 右为 +，spinV 上为 +（与 CueController 的语义一致）。
@@ -49,15 +49,32 @@ public class SpinPad : MonoBehaviour, IPointerDownHandler, IDragHandler, IPointe
         radius = r;
         ring = self;
 
-        // 白球俯视图（圆盘本体）：浅色圆，代表白球
+        // 白球俯视图（圆盘本体）：浅色方形球面（原神风深色面板之上的浅色区域）。
+        // v0.40 结论（真机实测四轮，别再折腾）：**给这个面板加任何 sprite 都会让整块
+        // 面板在真机变成金色实心（边框盖住一切）、编辑器里却完全正常**。
+        //   试过的圆形方案全部失败：①运行时 Sprite.Create；②运行时 Texture2D+RawImage；
+        //   ③导入 PNG 资源 + Android 强制未压缩；④同样导入资源但修了层级（SetAsFirstSibling）。
+        //   四条都是"编辑器正常、真机金色板"。而**纯色块方形**在真机稳定显示，
+        //   故最终定为方形。若将来要圆，必须在真机上重新验证，不能只看编辑器。
         var face = NewImage("SpinFace", self, Vector2.zero, Vector2.one * (r * 2f), new Color(0.90f, 0.90f, 0.86f, 0.95f));
         face.raycastTarget = true;                     // 自身接收点击（拖动范围 = 整个圆盘）
 
-        // 十字准线：帮助判断"中杆/高杆/低杆"位置
-        NewImage("SpinLineH", self, Vector2.zero, new Vector2(r * 2f, 3f), new Color(0.55f, 0.57f, 0.60f, 0.55f));
-        NewImage("SpinLineV", self, Vector2.zero, new Vector2(3f, r * 2f), new Color(0.55f, 0.57f, 0.60f, 0.55f));
+        // 十字准线：帮助判断"中杆/高杆/低杆"位置（略短于直径，端头不贴圆边）
+        NewImage("SpinLineH", self, Vector2.zero, new Vector2(r * 1.7f, 3f), new Color(0.55f, 0.57f, 0.60f, 0.5f));
+        NewImage("SpinLineV", self, Vector2.zero, new Vector2(3f, r * 1.7f), new Color(0.55f, 0.57f, 0.60f, 0.5f));
 
-        // 可拖动圆点（杆头位置）
+        // v0.39：外圈金环刻度（原神风）——12 颗小金菱绕圆盘边缘，兼作"球面范围"提示
+        for (int i = 0; i < 12; i++)
+        {
+            float a = i * Mathf.PI * 2f / 12f;
+            var tick = NewImage("SpinTick" + i, self,
+                new Vector2(Mathf.Cos(a), Mathf.Sin(a)) * (r - 7f), Vector2.one * 7f,
+                new Color(0.80f, 0.65f, 0.30f, 0.9f));
+            tick.rectTransform.localRotation = Quaternion.Euler(0f, 0f, 45f);   // 菱形
+            tick.raycastTarget = false;
+        }
+
+        // 可拖动圆点（杆头位置）：同样是圆（代表杆头打在球面上的位置）
         dotImg = NewImage("SpinDot", self, Vector2.zero, Vector2.one * 30f, new Color(0.85f, 0.20f, 0.16f, 0.98f));
         dotImg.raycastTarget = false;                  // 圆点不拦截射线，交给圆盘统一处理
         dot = dotImg.rectTransform;
@@ -117,11 +134,18 @@ public class SpinPad : MonoBehaviour, IPointerDownHandler, IDragHandler, IPointe
     public void ResetSpin() { dragging = 0f; SetSpin(0f, 0f); }
 
     /// 当前加塞的文字描述（HUD 显示用）。
+    /// v0.37 分档对齐物理映射（SpinLowK=2.0）：spinV≈-0.5 时 ω≈0 = 真实斯诺克的
+    /// 【定杆】（打中心偏下，撞球后原地停住），单独命名让玩家理解这一档的手感。
     public string Describe()
     {
         if (Mathf.Abs(SpinH) < 0.08f && Mathf.Abs(SpinV) < 0.08f) return "中杆";
-        string v = Mathf.Abs(SpinV) < 0.08f ? "" :
-                   SpinV > 0f ? (SpinV > 0.6f ? "高杆" : "略高") : (SpinV < -0.6f ? "低杆" : "略低");
+        string v;
+        if (Mathf.Abs(SpinV) < 0.08f) v = "";
+        else if (SpinV >= 0.6f) v = "高杆";
+        else if (SpinV >= 0.08f) v = "略高";
+        else if (SpinV <= -0.7f) v = "低杆";
+        else if (SpinV <= -0.4f) v = "定杆";
+        else v = "略低";
         string h = Mathf.Abs(SpinH) < 0.08f ? "" :
                    SpinH > 0f ? (SpinH > 0.6f ? "右塞" : "略右") : (SpinH < -0.6f ? "左塞" : "略左");
         return v + h;
