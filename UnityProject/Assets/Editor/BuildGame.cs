@@ -46,9 +46,9 @@ public static class BuildGame
             Debug.LogWarning("[SNOOKER] icon.png not found, using default icon");
         PlayerSettings.companyName = "SnookerLab";
         PlayerSettings.productName = "Snooker3D";
-        // 版本 0.40（第 40 次迭代）：对外显示的迭代版本号；versionCode 递增供安装覆盖
-        PlayerSettings.bundleVersion = "0.40";
-        PlayerSettings.Android.bundleVersionCode = 40;
+        // 版本 0.41（第 41 次迭代）：对外显示的迭代版本号；versionCode 递增供安装覆盖
+        PlayerSettings.bundleVersion = "0.41";
+        PlayerSettings.Android.bundleVersionCode = 41;
 
         // ★ 必须先切构建目标再写 Android 设置！
         //   顺序反了的话切换目标会把 Android 专属设置（架构/后端等）重置为默认，
@@ -99,8 +99,8 @@ public static class BuildGame
                   " icons=" + iconCount);
 
         bool bad = false;
-        if (PlayerSettings.bundleVersion != "0.40") { Debug.LogError("[SNOOKER] bundleVersion 未生效"); bad = true; }
-        if (PlayerSettings.Android.bundleVersionCode < 40) { Debug.LogError("[SNOOKER] versionCode 未生效"); bad = true; }
+        if (PlayerSettings.bundleVersion != "0.41") { Debug.LogError("[SNOOKER] bundleVersion 未生效"); bad = true; }
+        if (PlayerSettings.Android.bundleVersionCode < 41) { Debug.LogError("[SNOOKER] versionCode 未生效"); bad = true; }
         if (pkg != "com.snookerlab.snooker3d") { Debug.LogError("[SNOOKER] 包名未生效: " + pkg); bad = true; }
         if (PlayerSettings.GetScriptingBackend(BuildTargetGroup.Android) != ScriptingImplementation.IL2CPP)
         { Debug.LogError("[SNOOKER] 脚本后端不是 IL2CPP（MuMu 会拒装）"); bad = true; }

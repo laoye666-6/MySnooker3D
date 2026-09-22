@@ -71,12 +71,14 @@ public class BallController : MonoBehaviour
     }
 
     /// <summary>
-    /// 落袋：由 GameManager.CheckPockets 在球心进入袋口捕获半径时调用。
-    /// 处理流程：
-    ///   1. 关闭碰撞（球要穿过台呢的视觉孔洞往下掉，不能被台面碰撞体接住）
-    ///   2. 把速度改成"竖直下坠"：水平速度乘 0.2 保留一点点惯性观感，
-    ///      竖直方向至少 -0.5 m/s 保证一定往下掉（Mathf.Min 取更负的那个）
-    ///   3. 启动 Sink 协程，掉到桌底以下后整球隐藏
+    /// 落袋：由 GameManager.CheckPockets 在球心已坠入袋中（y &lt; -PotDepth）时调用。
+    ///
+    /// v0.41：球**已经**是穿过台呢洞口自然掉下去的（不再是"进捕获圈就判定"），
+    /// 所以这里只做两件事：
+    ///   1. 关闭碰撞 —— 防止它在下坠途中被袋内壁弹回台面（已经计分了，不能再回来；
+    ///      晃袋的球根本到不了这个深度，那种球仍归物理层管）
+    ///   2. 启动 Sink 协程，沉到暗井里之后隐藏
+    /// 不再强加下坠速度：让它保持自然的重力下坠，观感就是"球掉进袋里"。
     /// 重复调用是安全的（potted 标志防重入）。
     /// </summary>
     public void Pot()
@@ -85,20 +87,23 @@ public class BallController : MonoBehaviour
         potted = true;
         spin = Vector3.zero;                                             // v0.36：落袋即清自旋
         rb.detectCollisions = false;                                     // 不再与任何碰撞体交互
-        rb.velocity = new Vector3(rb.velocity.x * 0.2f,                  // 水平惯性衰减到 20%
-                                  Mathf.Min(rb.velocity.y, -0.5f),       // 竖直至少 -0.5 m/s 下坠
-                                  rb.velocity.z * 0.2f);
-        rb.angularVelocity *= 0.2f;                                      // 旋转同样衰减
+        // 水平速度压到 5%：真实袋口/网兜会把球"吞"下去，不会让它带着原速度横穿袋井。
+        // （v0.41 实测：衰减到 25% 时球在下坠途中横向漂 17cm、跑到桌框下面；
+        //   这里只压水平分量，竖直分量保持自然 —— 球本来就是靠重力掉下去的，不额外加速。）
+        rb.velocity = new Vector3(rb.velocity.x * 0.05f, rb.velocity.y, rb.velocity.z * 0.05f);
+        rb.angularVelocity *= 0.5f;                                      // 旋转衰减（视觉上转着进水）
         StartCoroutine(Sink());
     }
 
     /// <summary>
-    /// 落袋下沉协程：逐帧等待，直到球心 y 低于 -0.5m（台面下方）后隐藏球体。
+    /// 落袋下沉协程：等待球心沉到 G.PotHideY（暗井内部）后隐藏球体。
     /// 隐藏即视为"进袋收纳"，游戏结束时也不再显示。
+    /// v0.41：阈值由 -0.5m 改为 G.PotHideY(-0.25m) —— 现在袋井真的有 0.40m 深，
+    /// 且 -0.25 正处于井底上方，球不会穿过井底穿帮。
     /// </summary>
     IEnumerator Sink()
     {
-        while (transform.position.y > -0.5f) yield return null;
+        while (transform.position.y > G.PotHideY) yield return null;
         gameObject.SetActive(false);
     }
 
@@ -258,6 +263,7 @@ public class BallController : MonoBehaviour
     void FixedUpdate()
     {
         if (potted) return;
+        PocketLaunchGuard();                       // 必须先于下面的高度早退（见该方法说明）
         if (transform.position.y > G.BallR + 0.004f && transform.position.y >= -0.5f) return;
         StepOnCloth(Time.fixedDeltaTime);
     }
@@ -270,8 +276,37 @@ public class BallController : MonoBehaviour
     public void StepOnCloth(float dt)
     {
         if (potted) return;
+        PocketLaunchGuard();                       // 让离线测试也走同一套保护
         if (kind == BallKind.Cue) CueRollStep(dt);
         else RollStep(dt);
+    }
+
+    /// <summary>
+    /// 袋口"不许向上弹射"保护（v0.41）。
+    ///
+    /// 为什么需要：台面碰撞体是用轴对齐矩形拼出来再挖洞的（见 Bootstrapper.BuildClothBed），
+    /// 洞口边界因此是一条**阶梯**。高速球（500Hz 下 3.5m/s 每步走 7mm）滚过阶梯时
+    /// 会嵌进台阶尖角，PhysX 沿"尖角→球心"的法线把它顶出来 —— 那个法线是**斜向上**的，
+    /// 于是球被抛到空中（实测球心弹到 277mm、球随后飞出台面 0.33m）。
+    ///
+    /// 真实的袋口边沿是包着台呢的圆角，不会把球向上弹；这里用"钳掉向上的速度分量"
+    /// 来表达同一件事。只在袋口附近（15cm 内）且球贴近台面（y≤8cm）时生效，
+    /// 不影响正常跳球与库边反弹；水平速度完全不动，所以撞颚弹回（晃袋）不受影响。
+    /// </summary>
+    void PocketLaunchGuard()
+    {
+        Vector3 v = rb.velocity;
+        if (v.y <= 0f) return;                     // 没在上升，不必管
+        Vector3 p = transform.position;
+        if (p.y > 0.08f) return;                   // 已经跳起来了：不干预真实跳球
+        for (int i = 0; i < G.Pockets.Length; i++)
+        {
+            Vector3 pc = G.Pockets[i];
+            float dx = p.x - pc.x, dz = p.z - pc.z;
+            if (dx * dx + dz * dz > 0.0225f) continue;   // 15cm 之外不干预
+            rb.velocity = new Vector3(v.x, 0f, v.z);
+            return;
+        }
     }
 
     /// 普通球（红/彩）：恒定滚动减速度，行为与 v0.35 完全一致。

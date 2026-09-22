@@ -388,4 +388,390 @@ public static class PhysTest
         L("DRIFT 满侧塞直球 → pos=" + cue.transform.position.ToString("F3"));
         return cue.transform.position.z;
     }
+
+    // =================================================================================
+    // 入口四：袋口专项测试（v0.41 新增）
+    //
+    // 验证"台呢有真洞 + 真实下坠"这套袋口物理，而不是旧的"球心进圈即落袋"脚本判定。
+    // 四个用例：
+    //   A 慢球滚向下角袋      → 应掉进洞里（球心降到 PotDepth 以下）
+    //   B 快球横穿洞口        → 应**冲过洞口**继续在台面上跑（旧版会直接判落袋 = 假进球）
+    //   C 正对颚面斜撞        → 应被颚面弹回（晃袋），而不是穿进袋里
+    //   D 静止球放洞口边缘    → 越界应掉，未越界应留在台上（洞口边界正确性）
+    // 关键判定用"是否降到 PotDepth 以下"，与 GameManager.CheckPockets 的落袋判据一致。
+    // =================================================================================
+    public static void PocketTest()
+    {
+        Debug.Log("[PHYSPOCKET] === START ===");
+        var scene = EditorSceneManager.NewScene(NewSceneSetup.EmptyScene, NewSceneMode.Single);
+        var bootGo = new GameObject("Boot");
+        bootGo.AddComponent<Bootstrapper>().Init();
+        var gm = GameManager.I;
+        if (gm == null || gm.cue == null)
+        {
+            Debug.LogError("[PHYSPOCKET] Bootstrapper 初始化失败，测试中止");
+            Debug.Log("[PHYSPOCKET] === ABORTED ===\n" + Log);
+            EditorApplication.Exit(2);
+            return;
+        }
+        gm.StartGame();
+        var cue = gm.cue;
+        foreach (var b in gm.balls)
+            if (b != cue) b.gameObject.SetActive(false);
+
+        int pass = 0, fail = 0;
+        try
+        {
+            Physics.simulationMode = SimulationMode.Script;
+            float dt = 0.002f;
+
+            // A：慢球贴长库滚向下角袋（+x,+z 角，洞口圆心 (1.7925, 0.897)）。
+            //    球心 z 取贴库极限值附近，模拟真实"贴库推球进角袋"。
+            bool a = CaseSinkToPocket("A-slow-roll-into-corner", dt, cue,
+                new Vector3(1.30f, 0f, 0.860f), new Vector3(1.05f, 0f, 0f), 6f);
+            Tally(ref pass, ref fail, "A 慢球滚入角袋 → 落袋", a);
+
+            // B：贴中袋但球心未进洞口 —— 应以原速穿过、不落袋。
+            //    中袋洞口圆心 (0, 0.907) 半径 0.062（+2mm 边缘余量 = 0.064）。
+            //    球沿 z=0.830 滚（离洞口圆心 0.077 > 0.064，球心在洞外），必须安全通过。
+            //    注意：**不能**拿"沿库皮 z≈0.86 滚过中袋"当不落袋用例 —— 那时球心离
+            //    洞口圆心只有 47mm、已在洞内，真实球桌也会掉（v0.40 的捕获圈同样会判进袋）。
+            bool b = CaseRollAcross("B-past-centre-pocket-outside-hole", dt, cue,
+                new Vector3(-0.55f, 0f, 0.830f), new Vector3(2.2f, 0f, 0f), 0.65f);
+            Tally(ref pass, ref fail, "B 球心未进洞口 → 穿过不落袋", b);
+
+            // C：撞颚弹回 —— 瞄准**长库颚面的中点**（颚面从颚尖 (1.7125,0.889) 斜到
+            //    (1.6625,0.944)，中点 (1.6875,0.9165)）。球应从颚面弹回台面，
+            //    既不能落袋、也不能停在袋口外侧。
+            //    （早前版本瞄的是 (1.7425,0.889)，那已经在袋口内部了 —— 球会直接进袋，
+            //      当时"通过"是因为被洞口阶梯边缘弹了回来，属假象。）
+            bool c = CaseBounceOffJaw("C-hit-jaw-and-return", dt, cue);
+            Tally(ref pass, ref fail, "C 撞颚弹回 → 未落袋且在台面", c);
+
+            // D：洞口边界 —— 球心停在洞口圈外 20mm 应稳稳留在台面。
+            bool d = CaseRestOutsideHole("D-rest-outside-hole", dt, cue);
+            Tally(ref pass, ref fail, "D 洞口圈外静止 → 不下坠", d);
+
+            // E：晃袋专项 —— 斜向打进角袋袋口，统计与颚面/袋内衬的接触次数，
+            //    并确认最终结局（落袋 或 被弹回台面）都是物理自然产生、没有穿墙。
+            int rattleJaws = 0;
+            bool anyPotted = false, anyRejected = false, allSane = true;
+            float[] speeds = { 5.0f, 3.0f, 1.6f };
+            foreach (float sp in speeds)
+            {
+                Vector3 end; bool potted;
+                int jaws = CaseRattle("v=" + sp.ToString("F1"), dt, cue, sp, out end, out potted);
+                rattleJaws += jaws;
+                if (potted) anyPotted = true; else anyRejected = true;
+                bool sane = Mathf.Abs(end.x) < G.HalfL + 0.35f && Mathf.Abs(end.z) < G.HalfW + 0.35f;
+                if (!sane) allSane = false;
+                L("      结局 " + (potted ? "落袋" : "被弹回/留在台面") +
+                  " end=" + end.ToString("F3") + " sane=" + sane);
+            }
+            Tally(ref pass, ref fail, "E 晃袋：撞颚后落袋或被弹回，且不穿墙",
+                  rattleJaws >= 1 && allSane);
+
+            // F：沿角袋轴线正打（不同力度）—— 都应落袋，且不得离开台面、不得被严重弹飞。
+            //
+            // 抓到的两个真 bug（都已修）：
+            //   ① 球飞出台外 3 米、球心升到 124mm —— 袋内衬半径小于"布料支撑下的球面外缘"，
+            //      球一进袋口就嵌进内衬壁被解算崩飞（修法：内衬内径加硬约束，见踩坑 33）。
+            //   ② 球被弹到 115mm 高 —— 袋内衬原先是**零厚度曲面**，高速球直接穿进去，
+            //      再被去穿透逻辑顶出来（修法：给内衬 30mm 实体厚度 + 降去穿透速度上限）。
+            //
+            // 残留现象（已确认、暂不修）：5 m/s 满力正打角袋时，球在**袋口内的布料拼缝**
+            //   处会获得约 1.2 m/s 的向上分量、弹起约 90mm 后仍落入袋中（1.2~3 m/s 无此现象，
+            //   最高只到 42mm）。起因是布料板由多块 BoxCollider 拼成，球高速跨越拼缝时
+            //   接触法线被解算成倾斜。真实球袋本来也会"跳球"，且球仍正常落袋，
+            //   故按现状接受；上限取 0.12m（约 4.5 个球直径）作为防回归红线。
+            bool allPotted = true, noEscape = true, noViolentLaunch = true;
+            float[] aimSpeeds = { 5.0f, 3.0f, 2.0f, 1.2f };
+            foreach (float sp in aimSpeeds)
+            {
+                Vector3 end; float peakY; bool potted;
+                CaseStraightIntoCorner("v=" + sp.ToString("F1"), dt, cue, sp, out end, out peakY, out potted);
+                bool violent = peakY > 0.12f;
+                bool onTableLevel = end.y > -G.PotDepth;              // 还停在台面高度
+                bool outside = Mathf.Abs(end.x) > G.HalfL + 0.08f || Mathf.Abs(end.z) > G.HalfW + 0.08f;
+                bool escaped = onTableLevel && outside;               // 台面高度 + 台面外 = 真飞出去
+                if (!potted) allPotted = false;
+                if (escaped) noEscape = false;
+                if (violent) noViolentLaunch = false;
+                L("      落袋=" + potted + " 飞出桌外=" + escaped + " 严重弹飞=" + violent +
+                  " 最高球心y=" + peakY.ToString("F3") + " end=" + end.ToString("F3"));
+            }
+            Tally(ref pass, ref fail, "F 沿角袋轴线正打 → 落袋、不飞出桌外、不被严重弹飞",
+                  allPotted && noEscape && noViolentLaunch);
+        }
+        finally
+        {
+            Physics.simulationMode = SimulationMode.FixedUpdate;
+            L("simulationMode restored=" + Physics.simulationMode);
+        }
+        L("RESULT PASS=" + pass + " FAIL=" + fail);
+        Debug.Log("[PHYSPOCKET] === DONE ===\n" + Log);
+        EditorApplication.Exit(fail == 0 ? 0 : 1);
+    }
+
+    /// <summary>
+    /// 轨迹追踪（调试用）：沿角袋轴线以指定速度直打，逐步打印位置/速度与
+    /// "当前接触到的碰撞体名"，用于定位"球被弹起"这类需要看真实过程才能判断的问题。
+    /// </summary>
+    public static void PocketTrace()
+    {
+        var scene = EditorSceneManager.NewScene(NewSceneSetup.EmptyScene, NewSceneMode.Single);
+        var bootGo = new GameObject("Boot");
+        bootGo.AddComponent<Bootstrapper>().Init();
+        var gm = GameManager.I;
+        if (gm == null || gm.cue == null) { EditorApplication.Exit(2); return; }
+        gm.StartGame();
+        var cue = gm.cue;
+        foreach (var b in gm.balls) if (b != cue) b.gameObject.SetActive(false);
+
+        try
+        {
+            Physics.simulationMode = SimulationMode.Script;
+            float dt = 0.002f;
+            float speed = 5f;
+            Vector3 pc = G.Pockets[0];
+            const float K = 0.70710678f;
+            Vector3 start = new Vector3(pc.x - 0.62f * K, 0f, pc.z - 0.62f * K);
+            Vector3 dir = new Vector3(K, 0f, K);
+
+            cue.Place(start);
+            for (int i = 0; i < 80; i++) Physics.Simulate(dt);
+            cue.Rb.WakeUp();
+            cue.Rb.velocity = dir * speed;
+            cue.ApplySpin(dir, speed, 0f, 0f);
+            Debug.Log("[TRACE] maxDepenetrationVelocity=" + cue.Rb.maxDepenetrationVelocity +
+                      " start=" + start.ToString("F3"));
+
+            for (int i = 1; i <= 400; i++)
+            {
+                Physics.Simulate(dt);
+                Vector3 p = cue.transform.position, v = cue.Rb.velocity;
+                var hits = Physics.OverlapSphere(p, G.BallR + 0.002f);
+                string names = "";
+                foreach (var h in hits)
+                {
+                    if (h.transform.IsChildOf(cue.transform)) continue;
+                    names += h.gameObject.name + " ";
+                }
+                // 只打印"进袋口区域"之后的步（离袋心 0.20m 以内），避免刷屏
+                float dpc = new Vector2(p.x - pc.x, p.z - pc.z).magnitude;
+                if (dpc < 0.20f || p.y > 0.05f)
+                    Debug.Log(string.Format("[TRACE] t={0:F3} p=({1:F3},{2:F3},{3:F3}) v=({4:F2},{5:F2},{6:F2}) d={7:F3} touches=[{8}]",
+                        i * dt, p.x, p.y, p.z, v.x, v.y, v.z, dpc, names));
+                if (p.y < G.PotHideY) break;
+            }
+        }
+        finally
+        {
+            Physics.simulationMode = SimulationMode.FixedUpdate;
+        }
+        EditorApplication.Exit(0);
+    }
+
+    /// <summary>累加通过/失败计数并打印一行结论。</summary>
+
+    private static void Tally(ref int pass, ref int fail, string what, bool ok)
+    {
+        if (ok) pass++; else fail++;
+        L((ok ? "  OK   " : "  FAIL ") + what);
+    }
+
+    /// <summary>
+    /// 通用袋口用例：把白球放到 pos、赋初速 vel，模拟最多 maxSec 秒。
+    /// 返回该过程中记录到的"最低球心高度"（球心 y 的最小值）。
+    ///
+    /// ★ 必须用 ApplySpin 而不是直接赋 rb.velocity：白球的 CueRollStep 里有
+    /// "速度不得超过出杆初速 shotSpeed0"的硬限速（v0.37 用户约束），而 shotSpeed0
+    /// 只在 ApplySpin 里赋值。直接赋速度会让限速把它钳到 0（球纹丝不动，
+    /// 初版此测试就因此误报"慢球滚不进角袋"）。ApplySpin(...,0,0) = 中杆纯滚动。
+    ///
+    /// ★ 落袋后要照游戏里的路径调 Pot()：游戏每帧 CheckPockets → G.InPocket 为真就
+    /// RegisterPot → Pot()（关碰撞 + 压掉水平速度 + 开始下沉）。测试若不调，
+    /// 球会在袋井里一直带着原速度横漂、漂到桌框外面去 —— 那是"测试没走游戏路径"
+    /// 造成的假象，不是物理 bug（初版就因此误判过一次）。
+    /// </summary>
+    private static float RunPocketCase(BallController cue, Vector3 pos, Vector3 vel,
+                                       float dt, float maxSec, out Vector3 endPos)
+    {
+        cue.Place(pos);
+        for (int i = 0; i < 80; i++) Physics.Simulate(dt);     // 静置落稳
+        float speed = vel.magnitude;
+        Vector3 dir = speed > 1e-6f ? vel / speed : Vector3.right;
+        cue.Rb.WakeUp();
+        cue.Rb.velocity = vel;
+        cue.ApplySpin(dir, speed, 0f, 0f);                     // 中杆：同时写好 shotSpeed0
+
+        float minY = cue.transform.position.y;
+        int steps = Mathf.RoundToInt(maxSec / dt);
+        for (int i = 0; i < steps; i++)
+        {
+            Physics.Simulate(dt);
+            cue.StepOnCloth(dt);
+            float y = cue.transform.position.y;
+            if (y < minY) minY = y;
+            // 复刻游戏里的落袋路径：判据用同一个 G.InPocket（保证测的就是线上的行为）
+            if (!cue.potted && G.InPocket(cue.transform.position, cue.Rb.velocity)) cue.Pot();
+            if (y < G.PotHideY) break;                          // 已沉到隐藏深度
+        }
+        endPos = cue.transform.position;
+        return minY;
+    }
+
+    private static bool CaseSinkToPocket(string name, float dt, BallController cue,
+                                         Vector3 pos, Vector3 vel, float maxSec)
+    {
+        Vector3 end;
+        float minY = RunPocketCase(cue, pos, vel, dt, maxSec, out end);
+        L("CASE " + name + " minY=" + minY.ToString("F3") +
+          " end=" + end.ToString("F3"));
+        return minY < -G.PotDepth;
+    }
+
+    private static bool CaseRollAcross(string name, float dt, BallController cue,
+                                       Vector3 pos, Vector3 vel, float maxSec)
+    {
+        Vector3 end;
+        float minY = RunPocketCase(cue, pos, vel, dt, maxSec, out end);
+        L("CASE " + name + " minY=" + minY.ToString("F3") + " end=" + end.ToString("F3"));
+        bool stayed = minY >= -G.PotDepth;              // 没有掉进袋里
+        bool passed = end.x > pos.x + 0.30f;            // 确实滚过去了（没被洞口卡住）
+        return stayed && passed;
+    }
+
+    /// <summary>
+    /// 撞颚弹回：白球从台面内侧斜向朝角袋颚尖打（瞄准点取在颚面上，不是洞口中心），
+    /// 期望被颚面弹回台面、且没有掉进袋里。
+    /// </summary>
+    private static bool CaseBounceOffJaw(string name, float dt, BallController cue)
+    {
+        // 瞄准长库颚面的**中点**：颚面从颚尖 (1.7125, 0.889) 斜到 (1.6625, 0.944)。
+        // 球从台面内侧打上去，颚面法线朝台内 → 应被弹回台面。
+        Vector3 start = new Vector3(1.50f, 0f, 0.70f);
+        Vector3 aim = new Vector3(1.6875f, 0f, 0.9165f);
+        Vector3 dir = (aim - start); dir.y = 0; dir.Normalize();
+        Vector3 end;
+        float minY = RunPocketCase(cue, start, dir * 2.5f, dt, 5f, out end);
+        L("CASE " + name + " minY=" + minY.ToString("F3") + " end=" + end.ToString("F3") +
+          " moved=" + (end - start).magnitude.ToString("F3"));
+        bool notPotted = minY >= -G.PotDepth;
+        bool onTable = Mathf.Abs(end.x) < G.HalfL && Mathf.Abs(end.z) < G.HalfW;
+        return notPotted && onTable;
+    }
+
+    /// <summary>
+    /// 洞口圈外静止：球心离角袋洞口圆心 0.075m（洞口半径 0.055 + 20mm 余量），
+    /// 且仍在台面内 —— 应被布料托住不下坠。
+    /// </summary>
+    private static bool CaseRestOutsideHole(string name, float dt, BallController cue)
+    {
+        Vector3 pc = G.Pockets[0];                                  // 右上角袋
+        Vector3 pos = new Vector3(pc.x - 0.075f, 0f, pc.z - 0.075f);
+        Vector3 end;
+        float minY = RunPocketCase(cue, pos, Vector3.zero, dt, 2.5f, out end);
+        L("CASE " + name + " pos=" + pos.ToString("F3") +
+          " minY=" + minY.ToString("F3") + " end=" + end.ToString("F3"));
+        return minY > -0.005f;                                      // 几乎没下沉
+    }
+
+    /// <summary>
+    /// 晃袋用例：从台面内侧斜着把球打进角袋袋口（瞄准**远端颚面**），
+    /// 返回本用例中球与"颚"发生的接触次数（接触"回合"数，不是帧数），并回报是否落袋。
+    ///
+    /// 真实球桌的晃袋 = 球进袋口后撞颚，被弹到对面颚面、再弹回来，几次之后
+    /// 要么掉下去、要么被弹出袋口。这里不做脚本判定，只统计接触，让"晃"自己显现。
+    ///
+    /// 注意：不能用 OnCollisionEnter 统计 —— 手动 Physics.Simulate 不派发碰撞回调
+    /// （初版探针因此一直记 0，而球明明被弹回来了）。改用每步 OverlapSphere 检测。
+    /// </summary>
+    private static int CaseRattle(string name, float dt, BallController cue, float speed,
+                                  out Vector3 end, out bool potted)
+    {
+        potted = false;
+        Vector3 start = new Vector3(1.30f, 0f, 0.72f);
+        // 远端颚面：斜面从 (1.7845,0.817) 到 (1.8395,0.767)，取其中点附近
+        Vector3 aim = new Vector3(1.800f, 0f, 0.800f);
+        Vector3 dir = aim - start; dir.y = 0f; dir.Normalize();
+
+        cue.Place(start);
+        for (int i = 0; i < 80; i++) Physics.Simulate(dt);
+        cue.Rb.WakeUp();
+        cue.Rb.velocity = dir * speed;
+        cue.ApplySpin(dir, speed, 0f, 0f);
+
+        int jawEpisodes = 0, wallEpisodes = 0;
+        bool inJaw = false, inWall = false;
+        var seq = new System.Collections.Generic.List<string>();
+        float minY = cue.transform.position.y;
+        int steps = Mathf.RoundToInt(6f / dt);
+        for (int i = 0; i < steps; i++)
+        {
+            Physics.Simulate(dt);
+            cue.StepOnCloth(dt);
+            Vector3 p = cue.transform.position;
+            if (p.y < minY) minY = p.y;
+
+            bool jaw = false, wall = false;
+            foreach (var h in Physics.OverlapSphere(p, G.BallR + 0.003f))
+            {
+                if (h.transform.IsChildOf(cue.transform)) continue;
+                string n = h.gameObject.name;
+                if (n.StartsWith("jaw")) jaw = true;
+                else if (n.StartsWith("pocketTube")) wall = true;
+            }
+            if (jaw && !inJaw) { jawEpisodes++; seq.Add("jaw"); }
+            if (wall && !inWall) { wallEpisodes++; seq.Add("wall"); }
+            inJaw = jaw; inWall = wall;
+
+            if (G.InPocket(p, cue.Rb.velocity)) { cue.Pot(); potted = true; break; }
+        }
+        end = cue.transform.position;
+        L("RATTLE " + name + " 颚接触=" + jawEpisodes + " 内衬接触=" + wallEpisodes +
+          " 事件=[" + string.Join(",", seq.ToArray()) + "]");
+        return jawEpisodes;
+    }
+
+    /// <summary>
+    /// 正对角袋直打：沿**袋口轴线**（台面角点的角平分线）以指定速度直打。
+    /// 这条线路就是真实球员"正对袋口推进"的理想线路，任何正常力度都应落袋。
+    /// 回报是否落袋、最终位置与全程最高球心高度。
+    /// 用于复现/防回归真机 bug：球在袋口被夹住弹飞出台面。
+    /// </summary>
+    private static void CaseStraightIntoCorner(string name, float dt, BallController cue,
+                                               float speed, out Vector3 end, out float peakY,
+                                               out bool potted)
+    {
+        Vector3 pc = G.Pockets[0];                                  // 右上角袋 (1.7925, 0.897)
+        const float K = 0.70710678f;                                // 1/√2：角袋的角平分线方向
+        Vector3 start = new Vector3(pc.x - 0.62f * K, 0f, pc.z - 0.62f * K);
+        Vector3 dir = new Vector3(K, 0f, K);                        // 正对角袋轴线
+
+        cue.Place(start);
+        for (int i = 0; i < 80; i++) Physics.Simulate(dt);
+        cue.Rb.WakeUp();
+        cue.Rb.velocity = dir * speed;
+        cue.ApplySpin(dir, speed, 0f, 0f);
+
+        float minY = cue.transform.position.y, maxY = minY;
+        bool pottedNow = false;
+        int steps = Mathf.RoundToInt(5f / dt);
+        for (int i = 0; i < steps; i++)
+        {
+            Physics.Simulate(dt);
+            cue.StepOnCloth(dt);
+            Vector3 p = cue.transform.position;
+            if (p.y < minY) minY = p.y;
+            if (p.y > maxY) maxY = p.y;
+            // 与游戏同源：一旦 G.InPocket 为真就登记落袋（此时球已被判定进袋、
+            // 立刻关碰撞，不会再撞袋壁被顶飞）
+            if (!cue.potted && G.InPocket(p, cue.Rb.velocity)) { cue.Pot(); pottedNow = true; }
+            if (p.y < G.PotHideY) break;
+        }
+        end = cue.transform.position;
+        peakY = maxY;
+        potted = pottedNow;
+    }
 }

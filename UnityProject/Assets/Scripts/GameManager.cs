@@ -409,13 +409,16 @@ public class GameManager : MonoBehaviour
     }
 
     // ---------------------------------------------------------------------------------
-    // 袋口捕获检测：每帧对每颗未落袋的球做三重判定。
+    // 落袋检测（v0.41 重写）：**不再做"球心进捕获圈"的脚本判定**。
+    //
+    // 真实机制：台呢在洞口处没有布料，球心越过洞缘就失去支撑、由重力自然下坠。
+    // 现在物理层已经挖出了真的洞口（Bootstrapper.BuildClothBed），所以这里只做
+    // "确认球确实掉下去了"的观测：
     //   ① 出界保护：|x| 或 |z| 超出台面 0.3m —— 球穿库飞出（极端穿透），
-    //      直接按落袋处理，保证游戏能继续（否则球消失在外面卡死流程）。
-    //   ② 高度过滤：y > 0.12m 的球还在飞/被垫起，不参与袋口判定（防止空中穿过袋口误判）。
-    //   ③ 下坠判定：y < -0.15m 已在袋口下方坠落 → 落袋。
-    //   ④ 平面距离：球心（只比 XZ）与袋口捕获圆心距离 < 捕获半径 → 落袋。
-    //      角袋用 CornerCaptureR(0.070)，中袋用 CenterCaptureR(0.066)，见 G.Pockets 顺序。
+    //      按落袋处理，保证游戏能继续（否则球消失在外面卡死流程）。
+    //   ② 落袋确认：球心低于 -PotDepth(-0.10m) → 已下坠 126mm，不可能再回到台面。
+    //      晃袋/挂袋的球达不到这个深度（洞缘下方一点点就会被颚面或内壁弹回），
+    //      所以它们不会被误判 —— 这正是"袋口有真实物理"与"进圈即消失"的区别。
     // ---------------------------------------------------------------------------------
     void CheckPockets()
     {
@@ -425,15 +428,9 @@ public class GameManager : MonoBehaviour
             Vector3 pb = b.transform.position;
             if (Mathf.Abs(pb.x) > G.HalfL + 0.3f || Mathf.Abs(pb.z) > G.HalfW + 0.3f)
             { RegisterPot(b); continue; }                 // 出界球按落袋处理（兜底）
-            if (pb.y > 0.12f) continue;                   // 飞得太高，不判袋
-            if (pb.y < -0.15f) { RegisterPot(b); continue; }  // 已在袋中下坠
-            for (int i = 0; i < G.Pockets.Length; i++)
-            {
-                float r = i < 4 ? G.CornerCaptureR : G.CenterCaptureR;
-                Vector3 d = pb - G.Pockets[i];
-                d.y = 0;                                  // 只比水平距离
-                if (d.sqrMagnitude < r * r) { RegisterPot(b); break; }
-            }
+            // 落袋判定（v0.41：多层判据集中在 G.InPocket，说明见那里）
+            Vector3 v = b.Rb.velocity;
+            if (G.InPocket(pb, v)) { RegisterPot(b); continue; }
         }
     }
 

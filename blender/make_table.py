@@ -16,11 +16,17 @@ CUSH_H = 0.040                 # cushion max height above cloth
 NOSE_TOP = 0.034
 CORN_GAP = 0.072               # cushion end distance from corner along rail
 CEN_GAP = 0.056                # half-width of center pocket mouth
-JAW_DX = 0.050                 # jaw slant depth along rail
+JAW_DX = 0.050                 # jaw slant depth along rail (at full cushion depth)
+# v0.41：袋口颚部圆弧半径 —— 库边端头与鼻线的连接由"尖角"改为"圆弧"。
+# 圆心取在端头沿进深方向偏 r 处，圆弧与鼻线在端头点相切：开口宽度不变，
+# 但端头在进深方向平滑内收（真实球桌的颚部是圆角，球擦颚会被导走而不是撞直棱）。
+JAW_R_CORNER = 0.022           # 角袋端头圆弧半径
+JAW_R_CENTER = 0.016           # 中袋端头圆弧半径
 HOLE_CORNER = 0.055            # cloth hole radius, corner pockets
 HOLE_CENTER = 0.062            # cloth hole radius, center pockets
 CORNER_OFF = 0.008             # pocket center offset outside cloth corner
 CENTER_OFF = 0.018
+WELL_DEPTH = 0.40              # 袋口暗井深度（v0.41：平齐黑盘 → 真正有深度的杯状井）
 FRAME_OUT_X, FRAME_OUT_Y = L / 2 + 0.19, W / 2 + 0.19
 FRAME_IN_X, FRAME_IN_Y = L / 2 + 0.045, W / 2 + 0.045
 FRAME_TOP, FRAME_BOT = 0.048, -0.12
@@ -124,12 +130,15 @@ cutters = [cylinder("cut%d" % i, px, py, -0.02, hr, 0.5, None) for i, (px, py, h
 boolean_diff(bed, cutters)
 table_objs.append(bed)
 
-# ---------------- cushions (6 segments, jawed ends) ----------------
+# ---------------- cushions (6 segments, arc-rounded jaw ends) ----------------
+# PROF: 库边横截面，v=0 是鼻线（球接触的竖直面），v=CUSH_D 是木框侧。
 PROF = [(0.0, 0.0), (CUSH_D, 0.0), (CUSH_D, 0.030), (0.012, CUSH_H), (0.0, NOSE_TOP)]
 
-def cushion(name, T, u0, u1, material):
-    """T(u,v,z) -> world; v=0 at nose plane. Pockets lie beyond both u ends;
-    the cushion back shears away from each pocket along u."""
+def cushion(name, T, u0, u1, material, r0, r1):
+    """T(u,v,z) -> world; v=0 at nose plane.
+    端头先按斜切（s）生成，再用竖直圆柱切出圆弧（半径 r）：
+    圆心在 (端头, v=+r)，与鼻线在端头点相切 → 开口宽度不变，
+    端头由"斜切直棱"变成"圆弧倒角"，球擦颚时被平滑导走。"""
     n = len(PROF)
     verts = []
     for (ue, pdir) in ((u0, +1), (u1, -1)):
@@ -144,16 +153,27 @@ def cushion(name, T, u0, u1, material):
     faces.append(tuple(range(n, 2 * n)))          # end cap u1
     ob = mesh_obj(name, verts, faces, material)
     table_objs.append(ob)
+
+    # 端头圆弧：圆心 = T(端头, r)，半径 r；切掉圆内材料 = 圆弧倒角
+    cutters = []
+    for (ue, r) in ((u0, r0), (u1, r1)):
+        if r <= 0:
+            continue
+        cxx, cyy, _ = T(ue, r, 0.0)
+        cutters.append(cylinder("jawcut", cxx, cyy, 0.020, r, 0.24, None, seg=64))
+    if cutters:
+        boolean_diff(ob, cutters)                 # 切出圆弧端头（同时删掉 cutter）
     return ob
 
 half_long = [CEN_GAP, L / 2 - CORN_GAP]
 half_short = [-(W / 2 - CORN_GAP), W / 2 - CORN_GAP]
-cushion("Cushion_TopA", lambda u, v, z: (u, W / 2 + v, z), half_long[0], half_long[1], M_CUSH)
-cushion("Cushion_TopB", lambda u, v, z: (u, W / 2 + v, z), -half_long[1], -half_long[0], M_CUSH)
-cushion("Cushion_BotA", lambda u, v, z: (u, -(W / 2 + v), z), half_long[0], half_long[1], M_CUSH)
-cushion("Cushion_BotB", lambda u, v, z: (u, -(W / 2 + v), z), -half_long[1], -half_long[0], M_CUSH)
-cushion("Cushion_Right", lambda u, v, z: (L / 2 + v, u, z), half_short[0], half_short[1], M_CUSH)
-cushion("Cushion_Left", lambda u, v, z: (-(L / 2 + v), u, z), half_short[0], half_short[1], M_CUSH)
+# 长库每段：中袋端用 JAW_R_CENTER，角袋端用 JAW_R_CORNER；短库两端都是角袋。
+cushion("Cushion_TopA", lambda u, v, z: (u, W / 2 + v, z), half_long[0], half_long[1], M_CUSH, JAW_R_CENTER, JAW_R_CORNER)
+cushion("Cushion_TopB", lambda u, v, z: (u, W / 2 + v, z), -half_long[1], -half_long[0], M_CUSH, JAW_R_CORNER, JAW_R_CENTER)
+cushion("Cushion_BotA", lambda u, v, z: (u, -(W / 2 + v), z), half_long[0], half_long[1], M_CUSH, JAW_R_CENTER, JAW_R_CORNER)
+cushion("Cushion_BotB", lambda u, v, z: (u, -(W / 2 + v), z), -half_long[1], -half_long[0], M_CUSH, JAW_R_CORNER, JAW_R_CENTER)
+cushion("Cushion_Right", lambda u, v, z: (L / 2 + v, u, z), half_short[0], half_short[1], M_CUSH, JAW_R_CORNER, JAW_R_CORNER)
+cushion("Cushion_Left", lambda u, v, z: (-(L / 2 + v), u, z), half_short[0], half_short[1], M_CUSH, JAW_R_CORNER, JAW_R_CORNER)
 
 # ---------------- wooden frame with pocket openings ----------------
 frame = box("Frame", 0, 0, (FRAME_TOP + FRAME_BOT) / 2,
@@ -165,13 +185,26 @@ pcuts = [cylinder("cutp%d" % i, px, py, 0, hr + 0.02, 1.0, None) for i, (px, py,
 boolean_diff(frame, pcuts)
 table_objs.append(frame)
 
-# pocket wells (dark), recessed under frame top
-# v0.30：圆柱顶端与台面平齐（顶端 y=-0.002，比台呢面低 2mm 防止共面闪烁）。
-# 此前顶端在 FRAME_TOP-0.004=0.044，黑盘凸出台面 44mm 像硬币。
-# 圆柱半径 = 开孔+8mm，正好垫在台呢开孔与木框让位之间，从孔里看到的是平齐的黑面。
+# pocket wells (dark tube + floor), recessed under the frame top
+# v0.30：暗井顶面比台呢面低 2mm（防共面闪烁）—— 从孔里看到的是平齐的黑面，不是凸出的硬币。
+# v0.41：把井挖成**有深度的杯状空腔**（外壳 + 井底）：球落袋时会在井里可见地下坠，
+#        晃袋被弹回的球也能看见它冒出台面，而不是掉进一个只有薄薄一层黑面的平面里。
+#        另：井的内壁半径取得比台呢开孔**小 2mm** —— 台呢床身被布尔挖出的洞壁是绿色的
+#        （布料材质），如果井壁在它外面，从台面上俯视会看到洞内一圈绿墙；井壁内收之后
+#        由黑色把它整个挡住，孔里看到的就只有黑（初版截图实测确认了这个问题）。
 well_objs = []
+FLOOR_T = 0.02                  # 井底厚度
+WELL_TOP = -0.0005              # 井口高度：比台呢面低 0.5mm（不露头、也不与床身顶面共面）
 for i, (px, py, hr) in enumerate(POCKETS):
-    w = cylinder("Pocket_%d" % i, px, py, -0.002 - 0.30, hr + 0.008, 0.60, M_DARK)
+    # 外壳：外径 = 台呢开孔 +8mm（垫住孔与木框让位之间的缝），从井口往下 WELL_DEPTH
+    w = cylinder("Pocket_%d" % i, px, py,
+                 WELL_TOP - WELL_DEPTH / 2, hr + 0.008, WELL_DEPTH, M_DARK)
+    # 内腔：半径 = 开孔 -2mm。上下都比外壳多出一点，确保挖穿顶面、只在底部留井底
+    cut_top = WELL_TOP + 0.005
+    cut_bot = WELL_TOP - WELL_DEPTH + FLOOR_T
+    cutter = cylinder("wellcut%d" % i, px, py,
+                      (cut_top + cut_bot) / 2, hr - 0.002, cut_top - cut_bot, None)
+    boolean_diff(w, [cutter])                   # 挖成杯状（同时删掉 cutter）
     table_objs.append(w)
     well_objs.append(w)
 

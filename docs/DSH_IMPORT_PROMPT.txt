@@ -1,43 +1,94 @@
-【项目上下文导入 —— 双人斯诺克 3D（Unity/Blender/MuMu/GitHub）】
+【项目上下文导入 —— 双人斯诺克 3D（Unity / Blender / MuMu / GitHub）】
 
-我正在开发一个已基本完成并已开源的项目，以下是压缩上下文。请记住这些信息并在后续问答/工作中使用。
-更完整的细节（全部踩坑记录 18 条、版本史、命令）见同目录 CONTEXT_SUMMARY.md，需要时我会粘贴对应章节。
+我正在开发一个已基本完成并已开源的项目，以下是压缩上下文，请记住并在后续工作中使用。
+更完整的细节（逐条踩坑、完整版本史、全部命令）见同目录 CONTEXT_SUMMARY.md 与 E:\Snooker\README.md。
 
-■ 项目：双人斯诺克 3D 安卓游戏（双人同屏、完整官方斯诺克规则、真实物理、辅助瞄准线可开关、
-  贝塞尔入场运镜、设置界面、单杆分 HUD、147 提示）
-■ 技术栈：Unity 2022.3.62f3c1（IL2CPP，ARM64+X86_64）+ Blender 5.2 脚本化建模 + MuMu 模拟器 adb 实测验收
-■ 当前版本：v0.35（第 35 次迭代），APK 在 E:\Snooker3D\Builds\Snooker3D.apk
-■ 已开源：https://github.com/laoye666-6/MySnooker3D （public / MIT，Release v0.35 带 APK）
-■ 源码母本：E:\Snooker\unity_src\Scripts（10 个 cs，全中文注释）+ unity_src\Editor（3 个）
-■ 工程：E:\Snooker3D（Assets\Scripts 由 sync.bat 从母本同步）
-■ 文档：E:\Snooker\README.md（踩坑 18 条 + 版本记录 v1.0.28~v0.35）
+■ 项目：安卓双人同屏斯诺克游戏 —— 完整官方斯诺克规则、真实物理、可开关辅助瞄准线、
+  贝塞尔入场运镜、设置界面（帧率/分辨率/阴影/物理步长）、单杆分 HUD、147 提示、加塞杆法
+■ 技术栈：Unity 2022.3.62f3c1（IL2CPP，ARM64+X86_64）+ Blender 5.2 脚本化建模 + MuMu 模拟器实测
+■ 当前版本：v0.40（第 40 次迭代）；APK：E:\Snooker3D\Builds\Snooker3D.apk
+■ 已开源：https://github.com/laoye666-6/MySnooker3D （public / MIT，Release v0.40 已带 APK）
 
-■ 核心架构（三层分离）：
-- SnookerRules.cs = 纯函数规则引擎（TableState + ShotFacts → ShotOutcome，不依赖物理/UI）
-- GameManager.cs = 落地执行（加分/回点/换手/终局）+ 几何判定 IsSnookered()
-- Editor/RuleTest.cs = 44 条离线规则断言；Editor/PhysTest.cs = 物理回归；Editor/BuildGame.cs = 命令行构建
-其余：G.cs(常量) BallController(球) CueController(瞄准/出杆) AimLine(辅助线+指定彩球)
-GameCamera(运镜) UIManager(uGUI 图形+IMGUI 文字) GameSettings(帧率/分辨率/阴影)
+■ 路径（全部实测有效）
+- 源码母本（权威）：E:\Snooker\unity_src\Scripts（11 个 cs）+ unity_src\Editor（4 个）
+- Unity 工程：E:\Snooker3D（Assets\Scripts 由 sync.bat 从母本镜像同步）
+- 开源仓库：E:\Snooker\MySnooker3D（UnityProject\ 是仓库内工程，发版时同步）
+- 文档：E:\Snooker\README.md（踩坑 + 版本记录）、CONTEXT_SUMMARY.md、本文件
+- Unity：E:\Program files\2022.3.62f3c1\Editor\Unity.exe；Blender：D:\Program Files\STEAM\...\blender.exe
+- MuMu adb：E:\Program files\Netease\MuMu\nx_main\adb.exe，目标 127.0.0.1:16384
+- 日志：E:\Snooker\logs\；截图：E:\Snooker\shots\（编辑器截图在 shots\editor\）
+- 本机 Bash 是 Git Bash：路径写 /e/Snooker；跑 .bat 用 cmd //c "tools\sync.bat"
 
-■ 关键约束（踩坑精华，改动前必读）：
-1. MuMu 只认 arm64/x86_64 → 必须 IL2CPP；引擎裁剪必须关闭(stripEngineCode=false + link.xml)
-2. 白球不可与棕球同点重生（PhysX 炸膛）；休眠刚体赋速度前必须 WakeUp()
-3. 工程物理资产 m_SimulationMode 必须为 0——编辑器测试代码曾把它持久化导致真机物理全冻，
-   测试代码必须 try/finally 恢复
-4. uGUI 文字在部分机渲染空白 → 文字全用 IMGUI 绘制，中文用内嵌 DroidSansFallback
-5. 低速撞库粘库 = bounceThreshold 太大；设 0.1
-6. uGUI 中心锚定 y 向上 vs 设计坐标 y 向下：pos.y = 540 - 设计y；IMGUI CRect 的 cx 是中心不是边缘
-7. **规则改动必须走 SnookerRules.cs + RuleTest 断言**，不许把判定写进物理/UI 代码
-8. **推送到 GitHub 前必须先 git fetch**（我曾 force push 覆盖了用户网页编辑的提交）
-9. 本机 Bash 是 Git Bash（路径 /e/Snooker）；含中文的 .bat 会闪退，需纯 ASCII；
-   PowerShell 调 gh 时 --jq 含引号会报参数错误，用 --template
+■ 架构（三层分离，务必维持）
+- SnookerRules.cs = 纯函数规则引擎（TableState + ShotFacts → ShotOutcome，不碰物理/UI）
+- GameManager.cs = 规则落地（加分/回点/换手/终局）+ 几何判定 IsSnookered() + 球在手 DragCueBall()
+- Editor：RuleTest.cs（44 条规则断言）、PhysTest.cs（Run 开球 / CushionTest 库边 / SpinTest 加塞）、
+  BuildGame.cs（命令行构建，版本号在此改）、ShotTest.cs（编辑器内自动截图驱动）
+- 其余：G.cs(常量) BallController(球+白球自旋模型) CueController(瞄准/出杆/加塞状态/拖球)
+  AimLine(辅助线+指定彩球) SpinPad(加塞击球点圆盘) GameCamera(运镜) UIManager(uGUI+IMGUI)
+  GameSettings(帧率/分辨率/阴影/物理步长)
 
-■ 构建命令：
-"E:\Program files\2022.3.62f3c1\Editor\Unity.exe" -batchmode -quit -nographics -projectPath "E:\Snooker3D" -executeMethod BuildGame.BuildAndroid -logFile "E:\Snooker\logs\build.log"
-（调试加 -x86only；改版本号在 unity_src\Editor\BuildGame.cs；规则回归换 RuleTest.Run）
+■ 物理要点（容易改错，改动前必读）
+1. 白球自旋（加塞）**不能靠 PhysX**，是 BallController 里自建的滑移摩擦模型（CueRollStep）；
+   它依赖三条硬约束，缺一个效果就被吃掉：① 白球物理材质摩擦取 0；② 白球 angularDrag=0；
+   ③ 高低杆用非对称系数（G.SpinTopK=1.0 / SpinLowK=2.0），否则中低杆是"无旋滑行"死区。
+2. 定标依据（实测文献）：球-台呢滑动摩擦 μ≈0.2（滚动阻力 0.005~0.015）；球重 0.17kg 对
+   a=μ·g 无影响（质量约掉），故加速度只取 μg；杆头击点极限 h≤0.5r → 高杆≤1.25×(v/r)、
+   低杆≥-1.0×(v/r)。**白球速度任何时刻不得超过出杆初速**（用户明确要求，代码里有钳制）。
+3. spinV=spinH=0（中杆）必须与旧版逐帧一致 —— 这是判断加塞实现对不对的第一道关。
+4. 低速撞库"粘库"= Physics.bounceThreshold 太大 → 设 0.1。
+5. 白球不可与棕球同点重生（PhysX 炸膛）；赋速度前必须 WakeUp()。
 
-■ 已完成：全部玩法闭环 + 完整规则（含指定彩球/Miss 让对手重打/自由球）+ 运镜 + 设置 + HUD + 147 + 图标
-■ 未实现：Miss 累计三次判负、自由球判定的裁判裁量
-■ 你需要做的：等我提出下一步需求；你无法直接读写我的本地文件，需要内容我会粘贴
+■ 关键约束（踩坑精华）
+1. MuMu 只认 arm64/x86_64 → 必须 IL2CPP；必须关闭引擎裁剪（stripEngineCode=false + link.xml）
+2. 规则改动**必须**走 SnookerRules.cs + RuleTest 断言，不许把判定写进物理/UI 代码
+3. 工程物理资产 m_SimulationMode 必须为 0；测试代码必须 try/finally 恢复（曾导致真机物理全冻）
+4. uGUI 动态字体在部分机渲染空白 → 文字一律 IMGUI + 内嵌 DroidSansFallback
+5. uGUI 中心锚定 y 向上 vs 设计坐标 y 向下：pos.y = 540 - 设计y；IMGUI CRect 的 cx 是中心不是边缘
+6. **运行时创建的 UI 图形在真机不可靠**：Sprite.Create / new Texture2D 在编辑器正常、真机不渲染；
+   连"导入 PNG 但给面板加 sprite"这次也复现了异常 → UI 图形优先用纯色块或内建资源
+7. **不要在编辑器里调 Screen.SetResolution**（会卡死播放模式）；编辑器的播放模式在窗口失焦时
+   可能暂停，跑自动截图脚本要用 Application.runInBackground = true + WaitForSecondsRealtime
+8. **编辑器测试与 APK 构建不可并行**（会报 HandleProjectAlreadyOpenInAnotherInstance 并崩溃，
+   需手工删 Temp/UnityLockfile）；ShotTest 不能加 -quit/-batchmode
+9. **推送到 GitHub 前必须先 git fetch**（曾 force push 覆盖了用户网页编辑的提交）
+10. 含中文的 .bat 在 GBK 控制台会闪退 → 批处理保持纯 ASCII；PowerShell 调 gh 的 --jq 含引号会报错，用 --template
+11. 本机网络访问 github.com/uploads.github.com 偶发不通，APK 上传可能多次失败需重试（开 VPN 后正常）
+
+■ 常用命令
+:: 同步母本 → 工程（robocopy /MIR，只镜像 *.cs，会删工程内多余 cs）
+cmd //c E:\Snooker\tools\sync.bat
+:: 构建（-x86only 只编 x86_64，调试快；正式版双架构）
+"E:\Program files\2022.3.62f3c1\Editor\Unity.exe" -batchmode -quit -nographics ^
+  -projectPath "E:\Snooker3D" -executeMethod BuildGame.BuildAndroid -logFile "E:\Snooker\logs\build.log"
+:: 四道回归（都不能加 -nographics 的只有 PhysTest 系；RuleTest 可加）
+  -executeMethod RuleTest.Run        期望 PASS=44 FAIL=0 + ALL RULES OK
+  -executeMethod PhysTest.SpinTest   期望 ALL SPIN OK
+  -executeMethod PhysTest.CushionTest 期望三个 bounced=True
+  -executeMethod PhysTest.Run        开球回归
+:: 编辑器自动截图（带窗口，不加 -quit/-batchmode）
+  -screen-width 1600 -screen-height 900 -executeMethod ShotTest.Run → shots\editor\*.png（9 张）
+:: MuMu 安装/启动/截图（注意 Git Bash 下要 export MSYS_NO_PATHCONV=1）
+  adb connect 127.0.0.1:16384
+  adb -s 127.0.0.1:16384 install -r -t E:/Snooker3D/Builds/Snooker3D.apk
+  adb -s 127.0.0.1:16384 shell screencap -p /sdcard/a.png && adb pull /sdcard/a.png 本地路径
+
+■ 工作方式约定（用户明确要求，务必遵守）
+- 每轮给一组编号修改要求 + 指定新版本号；versionName 0.NN = 第 NN 次迭代，versionCode 递增
+- 物理/玩法 bug **先在 Unity 编辑器复现修复、回归通过，再导出 APK** 到 MuMu 验收
+- 中间迭代尽量用编辑器截图（ShotTest）验证，只在最终打磨阶段上 MuMu
+- 改视觉模型尽量不动 C#（改 Blender 脚本参数）；球体保持哑光（粗糙 0.65 / 金属 0）
+- 源码母本 E:\Snooker\unity_src 必须保留，改动先写母本再 sync
+- 推送前先 fetch；发版流程 = 改母本 → 改 BuildGame 版本号 → 构建 → 同步到 MySnooker3D → 提交推送 → gh release
+- 用户可能在 GitHub 网页直接改 README，故已推送历史尽量不改写
+
+■ 已完成：玩法闭环 + 完整规则（含指定彩球/Miss 让对手重打/自由球）+ 球在手 D 区摆球
+  + 加塞杆法（高杆/低杆/定杆/左右塞）+ 物理步长可调 + 原神风 UI + 运镜 + 设置 + HUD + 147 + 图标
+■ 未实现（已就地标注）：Miss 累计三次判负（Rule 11(c)(i)）、自由球判定的裁判裁量
+■ 已取消：入场 CG（Blender 开场动画）—— 用户明确不做
+■ 已知遗留：加塞圆盘的"白球面"是方形（圆形方案在真机始终异常，见约束 6）
+
+■ 你需要做的：等我提出下一步需求。若你有本机文件读写权限，可直接改源码/跑命令/构建；
+  若无，需要什么内容我会粘贴给你。回答请用中文。
 
 请确认你已理解以上上下文，我将提出具体任务。

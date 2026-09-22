@@ -62,6 +62,57 @@ public static class G
     /// 中袋袋口中心相对库边线的外偏移（18mm）。
     public const float CenterOff = 0.018f;
 
+    // ------------------------------------------------------------------
+    // 一b、袋口几何（v0.41 新增）
+    //
+    // 现实依据：
+    //   · 袋口"口宽"从颚尖（库边鼻线与颚面相交处）量起；颚面是一个带角度的平面
+    //     （不是圆弧）。标准模型用颚面角 α 描述（α = 180° − 颚楔角），池球角袋
+    //     典型 α = 142°；本工程沿用 JawDx/CushD 定出的斜切面。
+    //     来源：https://billiards.colostate.edu/technical_proofs/new/TP_B-15.pdf
+    //   · 真实的颚尖不是直角棱 —— 库边端头被台呢包住、端头本身有半径，球擦颚时
+    //     被这段圆弧平滑地导向袋内或弹回，这是本版新增的部分。
+    //   · 落袋不再是"球心进圈就消失"：台呢在洞口处**真的没有布料**，球心越过洞缘
+    //     就失去支撑、由重力自然下坠 —— 快球能冲过洞口继续跑，慢球掉下去，撞颚弹开。
+    //     晃袋 / 挂袋 / 过袋由此自然涌现，不做脚本判定。
+    // ------------------------------------------------------------------
+
+    /// 角袋洞口半径（= Blender HOLE_CORNER 0.055）。台呢在此圈内没有支撑。
+    public const float HoleCornerR = 0.055f;
+
+    /// 中袋洞口半径（= Blender HOLE_CENTER 0.062）。
+    public const float HoleCenterR = 0.062f;
+
+    /// 颚尖圆角半径：库边端头与鼻线/颚面的连接圆弧（角袋 22mm / 中袋 16mm）。
+    /// **必须与 Blender 的 JAW_R_CORNER / JAW_R_CENTER 一致**（视觉模型用它做布尔圆弧）。
+    /// 现实依据见下方注释：WPBSA 规则书明确把库边端头描述为"被切成曲线"，但**不给半径数值**
+    /// （规则用的是各厂商自定的专用量规，且会随时间变更）。故本值是按"让弧面在俯视下
+    /// 清晰可见、又不明显改变开口宽度"选取的——圆弧与鼻线相切，所以**开口宽度与旧版完全相同**。
+    /// 来源：WPBSA Rulebook 2024-25 §2 Rule 4 "Cushion Faces"。
+    public const float JawRCorner = 0.022f;
+    public const float JawRCenter = 0.016f;
+
+
+    /// 落袋判定深度（米）：球心低于此值即判定已落袋。
+    ///
+    /// 取小值（12mm）而不是"等球掉深一点再判"，是因为**判定越晚，球在袋井里横漂越远**：
+    /// 球从台面（球心 +0.026）下坠到 -0.10 约需 0.16 秒，带着 3m/s 水平速度就会横漂 0.48m
+    /// —— 足以漂出袋井跑到桌框底下（v0.41 实测确实如此）。
+    ///
+    /// 12mm 这个阈值是**充分且必要**的：布料板是 y∈[-0.05, 0] 的实体盒，
+    /// 球心在 -0.012 时球体跨 y∈[-0.038, 0.014]，与布料盒的 y 范围必然重叠 ——
+    /// 所以球能出现在这个深度，**只可能**是它已经水平进入某个洞口内部了。
+    /// 换言之"球心低于台呢平面"本身就是"球已进洞"的判据，不需要再比距离。
+    public const float PotDepth = 0.012f;
+
+    /// 袋内壁深度：台面以下的袋口侧墙，从 y=0 往下延伸这么多，用于兜住正在下坠的球
+    /// （否则球会边下坠边横向漂出袋口、从桌底飞出去）。现实中袋内壁是皮革/绒布衬里。
+    public const float PocketWallD = 0.16f;
+
+    /// 落袋球体隐藏高度（米）：球心低于此值即停止渲染。
+    /// 袋井视觉底在 -0.40（WELL_DEPTH 0.40），此值取在井底上方，球消失在暗井内部、不会穿模。
+    public const float PotHideY = -0.25f;
+
     /// 开球线（baulk line）的 X 坐标 = -(1.7845 - 737mm)。
     /// 距开球端库边 29 英寸（737mm），棕/绿/黄球与开球白球都布置在这条线上。
     public const float BaulkX = -1.0475f;
@@ -91,12 +142,13 @@ public static class G
     /// v0.32：4.6 → 6.0，满力开球更有爆发力（约职业 smash break 水准）。
     public const float MaxShotSpeed = 6.0f;
 
-    /// 角袋捕获半径（米）：球心与角袋捕获圆心距离小于此值即判落袋。
-    /// 必须略大于台呢视觉孔洞半径（Blender 里 0.055），否则球会"悬"在袋口。
-    /// 调大 → 角袋更容易进；调小则袋口红球可能挂袋不掉。
+    /// 角袋"袋口影响圈"半径（米）。**v0.41 起不再用于落袋判定**（落袋已改为
+    /// 真实的"布料支撑 + 重力下坠"，见 HoleCornerR/PotDepth）——此值现在只用于
+    /// GameManager 的"慢爬球是否还够得着洞口"等待判定，语义是"球心到这个距离内
+    /// 就算逼近洞口，别急着结算"。取 洞缘 + 球半径 ≈ 0.055+0.026 = 0.081 的量级。
     public const float CornerCaptureR = 0.070f;
 
-    /// 中袋捕获半径（米），同上，对应中袋视觉孔 0.062。
+    /// 中袋袋口影响圈半径（米），语义同上，对应中袋洞缘 0.062。
     public const float CenterCaptureR = 0.066f;
 
     // ------------------------------------------------------------------
@@ -195,6 +247,79 @@ public static class G
     // ------------------------------------------------------------------
     // 六、工具函数
     // ------------------------------------------------------------------
+
+    /// <summary>
+    /// 落袋判定（v0.41）：球心是否已进入某个袋口并被判落袋。
+    ///
+    /// 为什么不能只等"掉到某个深度"：球从台面开始下坠时是**带着水平速度**的，
+    /// 高速球在"掉够深度"之前已经横move 了很远（3.3m/s 下坠 38mm 期间走 0.29m），
+    /// 于是它会先撞上袋内壁或布料拼缝的边缘，被边缘接触顶飞（实测球心被弹到 277mm、
+    /// 飞出台外）。所以必须在**球一进洞口就开始下沉**时立刻登记落袋。
+    ///
+    /// 判据分三层，按物理合理性递增：
+    ///   ① 安全网：球心低于 -PotDepth（远低于台呢面）→ 必然在袋里。
+    ///   ② 球心已在洞口圆内、且已下沉到台呢面之下（y &lt; 0.022，即比静置低 4mm）：
+    ///      · 角袋 → 直接判落袋。角袋在台面角上，洞口圆内没有对侧台面，
+    ///        不存在"越过袋口继续滚"的合法情形。
+    ///      · 中袋 → 还要看速度方向：只有**朝袋外**（远离桌心）的分量够大才算进袋；
+    ///        沿台面横穿洞口（分量接近 0）是真实的"过袋"，不判。
+    ///   ③ 球心已越过角袋袋口中心且在往外走 → 必然落袋（几何补充判据）。
+    ///
+    /// 三层的顺序与阈值都经过 PhysTest.PocketTest 的 6 个用例验证。
+    /// </summary>
+    public static bool InPocket(Vector3 pos, Vector3 vel)
+    {
+        if (pos.y < -PotDepth) return true;                       // ① 安全网
+
+        Vector3 vFlat = new Vector3(vel.x, 0f, vel.z);
+        float sp = vFlat.magnitude;
+
+        for (int i = 0; i < Pockets.Length; i++)
+        {
+            Vector3 pc = Pockets[i];
+            float dx = pos.x - pc.x, dz = pos.z - pc.z;
+            float holeR = (i < 4 ? HoleCornerR : HoleCenterR) + 0.002f;
+            if (dx * dx + dz * dz > holeR * holeR) continue;      // 球心不在洞口圆内
+
+            if (i < 4)
+            {
+                // ② 角袋：球心进洞口圆就已是"大半悬空 + 那一侧没有台面"，
+                //    只要它开始下沉就判落袋（2.3mm 的下沉，几乎必然马上发生）。
+                //    阈值不能取太深：高速球在"掉够深度"之前会撞上洞口边缘被顶飞。
+                if (pos.y < 0.024f) return true;
+                continue;
+            }
+
+            // ③ 中袋：两侧都有台呢，必须确认它"掉下去了"而不是"横穿洞口"。
+            //    真实的过袋球只下沉 4~8mm 就过去了；真进袋的球会很快沉到 20mm 以下。
+            if (pos.y < 0.006f) return true;
+            Vector3 outward = new Vector3(pc.x, 0f, pc.z).normalized;   // 桌心 → 袋口
+            if (sp < 0.05f) return true;                          // 几乎停住 → 已卡在袋口
+            if ((vFlat.x * outward.x + vFlat.z * outward.z) / sp > 0.25f) return true;
+        }
+
+        return PastCornerPocketCenter(pos, vel);                  // ④ 几何补充
+    }
+
+    /// <summary>
+    /// 角袋几何补充判据：球心已越过角袋袋口中心、且还在往外走（或已停住）。
+    /// 袋口中心在台面角点之外，越过它就再没有支撑面 —— 物理上必然在袋中。
+    /// 用于兜住"洞口圆判据之外"的边角情形（例如球沿库高速掠过颚尖后滑入袋腔）。
+    /// </summary>
+    public static bool PastCornerPocketCenter(Vector3 pos, Vector3 vel)
+    {
+        for (int i = 0; i < 4; i++)                       // 前 4 个是角袋（见 Pockets 顺序）
+        {
+            Vector3 pc = Pockets[i];
+            float dx = pos.x - pc.x, dz = pos.z - pc.z;
+            if (dx * dx + dz * dz > 0.02f) continue;       // 离袋口太远（>14cm），不参与
+            Vector3 outward = new Vector3(pc.x, 0f, pc.z).normalized;   // 桌心 → 袋口
+            if (dx * outward.x + dz * outward.z <= 0f) continue;         // 还没越过袋口中心
+            if (vel.x * outward.x + vel.z * outward.z > 0f) return true; // 还在往外走
+            if (new Vector3(vel.x, 0f, vel.z).sqrMagnitude < 0.0025f) return true;
+        }
+        return false;
+    }
 
     /// <summary>
     /// 把一个点夹进开球区 D（v0.36）：球心不得越过开球线（x ≤ BaulkX），

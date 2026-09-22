@@ -1,9 +1,10 @@
 # MySnooker3D 🎱
 
-**双人斯诺克 3D** —— 基于 Unity 的安卓双人同屏斯诺克游戏（当前为 Beta v0.40）。标准比赛尺寸球桌由 Blender
+**双人斯诺克 3D** —— 基于 Unity 的安卓双人同屏斯诺克游戏（当前为 Beta v0.41）。标准比赛尺寸球桌由 Blender
 脚本化建模，真实物理（PhysX + 自定义滚动摩擦），**按 WPBSA 官方规则实现的斯诺克规则**
 （红彩交替、清彩、彩球回点、罚分取值、只剩黑球时的终局判定），可开关辅助瞄准线，
 内置入场运镜动画与设置界面（帧率 / 分辨率 / 阴影）。
+v0.41 起袋口具备真实物理：弧形颚部、台呢真洞下坠、撞颚晃袋。
 
 *A 2-player split-screen snooker game for Android, built with Unity 2022.3 +
 procedural Blender modeling. Realistic physics, full simplified snooker rules,
@@ -11,9 +12,9 @@ toggleable aiming aids, cinematic intro camera and in-game settings.*
 
 ## 📥 下载安装（Android）
 
-[![Download APK](https://img.shields.io/badge/下载_APK-v0.40_约70MB-brightgreen?style=for-the-badge)](https://github.com/laoye666-6/MySnooker3D/releases/latest)
+[![Download APK](https://img.shields.io/badge/下载_APK-v0.41_约70MB-brightgreen?style=for-the-badge)](https://github.com/laoye666-6/MySnooker3D/releases/latest)
 
-- **直接下载** → **[Snooker3D.apk](https://github.com/laoye666-6/MySnooker3D/releases/download/v0.40/Snooker3D.apk)**（约 70MB）
+- **直接下载** → **[Snooker3D.apk](https://github.com/laoye666-6/MySnooker3D/releases/download/v0.41/Snooker3D.apk)**（约 70MB）
 - 或前往 [**Releases 页面**](https://github.com/laoye666-6/MySnooker3D/releases) 查看全部版本与更新说明
 - **安装步骤**：下载 APK → 传到手机 → 点击安装；首次安装需在系统设置里允许「安装未知来源应用」
 - **系统要求**：Android 7.0+；支持 arm64-v8a 真机与 x86_64 模拟器（MuMu 等）
@@ -136,6 +137,28 @@ blender -b -P blender/make_icon.py      :: 应用图标
 - 更多细节见源码内中文注释
 
 ## 📝 更新记录
+
+### v0.41 —— 袋口真实化：弧形颚部 / 台呢真洞下坠 / 晃袋
+
+本版把袋口从"视觉装饰 + 脚本判定"改成**有真实物理的袋口**。
+
+- **颚部改成圆弧**（袋口与库边连接处的形状）。WPBSA 官方规则书明确把库边端头描述为
+  曲线："The curved face of the cushion is considered to be the area inside the points
+  where the cushion face is actually cut into a curve to form the pocket opening."
+  （WPBSA Rulebook 2024-25 §2）。实现上用竖直圆柱布尔切出与鼻线**相切**的圆弧 ——
+  开口宽度不变（手感不回归），端头由直棱变圆角。碰撞体按同一轮廓切成凸棱柱
+  （先前用一条直斜线逼近，颚尖处偏差达 6.4mm = 球直径的 12%）。
+- **落袋不再是"球心进捕获圈即判定"**。旧版台面是一整块实体盒，球物理上掉不进洞，
+  所以撞颚弹回**根本不可能发生**。现在台面用轴对齐矩形拼装并挖出 6 个真洞
+  （每洞 16 条带逼近圆孔），球心越过洞缘就失去支撑、由重力自然下坠。
+- **新增袋内衬**（现实中的皮革/绒布衬里）：30mm 厚实体环墙，**开口侧低、后侧高** ——
+  低墙不挡滚动球但兜不住快球，高墙能兜但绕整圈会挡住贴库球，
+  两个约束冲突，只有这个形状能同时满足。
+- **晃袋自然涌现**：不再有任何脚本判定。回归用例里 3.0 m/s 斜打角袋出现
+  **连续撞两侧颚**（jaw,jaw）后被弹回台面，正是真实球桌的晃袋过程。
+- 袋井从"平齐黑盘"改为真正有深度的杯状空腔（深 400mm）。
+- **新增回归 `PhysTest.PocketTest`（6 用例）**。回归：规则 44/44、开球、库边 3/3、
+  加塞全过、袋口 6/6。
 
 ### v0.37 ~ v0.40 —— 加塞物理定标 / 物理步长可调 / 原神风界面
 - **加塞（杆法）按真实台呢参数重定标**。旧版两个参数都不符合现实：

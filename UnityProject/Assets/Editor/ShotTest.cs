@@ -121,6 +121,27 @@ public class ShotDriver : MonoBehaviour
         yield return Wait(1.6f);
         yield return Shot("09_shot_t3.7");
 
+        // ---- ⑨ v0.41：袋口特写（验证弧形颚部 + 洞口 + 暗井）----
+        // 直接摆放相机（不通过 GameCamera，避免被它的跟球逻辑拉回去）。
+        gm.StartGame();                                    // 复位球局，避免上一杆的球散落干扰
+        yield return Wait(1.0f);
+        var cam = Camera.main;
+        if (cam != null)
+        {
+            // ★ 必须先停掉 GameCamera：它的 Update/LateUpdate 每帧都会把相机拉回
+            //   跟球/全景机位，直接摆 transform 会被它立刻覆盖（初版截图因此没切过去）。
+            var gc = cam.GetComponent<GameCamera>();
+            if (gc != null) gc.enabled = false;
+            cam.transform.position = new Vector3(1.62f, 0.22f, 0.70f);
+            cam.transform.LookAt(new Vector3(1.79f, 0.005f, 0.895f));
+            yield return Wait(0.7f);
+            yield return Shot("10_pocket_corner");
+            cam.transform.position = new Vector3(-0.02f, 0.20f, 0.72f);
+            cam.transform.LookAt(new Vector3(0.0f, 0.005f, 0.90f));
+            yield return Wait(0.7f);
+            yield return Shot("11_pocket_middle");
+        }
+
         Debug.Log("[SHOT] DONE");
         yield return Wait(0.3f);
         EditorApplication.Exit(0);
