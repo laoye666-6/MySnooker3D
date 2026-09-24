@@ -1,10 +1,10 @@
 # MySnooker3D 🎱
 
-**双人斯诺克 3D** —— 基于 Unity 的安卓双人同屏斯诺克游戏（当前为 Beta v0.41）。标准比赛尺寸球桌由 Blender
+**双人斯诺克 3D** —— 基于 Unity 的安卓双人同屏斯诺克游戏（当前为 Beta v0.42）。标准比赛尺寸球桌由 Blender
 脚本化建模，真实物理（PhysX + 自定义滚动摩擦），**按 WPBSA 官方规则实现的斯诺克规则**
 （红彩交替、清彩、彩球回点、罚分取值、只剩黑球时的终局判定），可开关辅助瞄准线，
 内置入场运镜动画与设置界面（帧率 / 分辨率 / 阴影）。
-v0.41 起袋口具备真实物理：弧形颚部、台呢真洞下坠、撞颚晃袋。
+v0.41 起袋口具备真实物理：弧形颚部、台呢真洞下坠、撞颚晃袋；v0.42 修正清彩阶段的阶段切换、瞄准微调步长降到十分之一。
 
 *A 2-player split-screen snooker game for Android, built with Unity 2022.3 +
 procedural Blender modeling. Realistic physics, full simplified snooker rules,
@@ -12,9 +12,9 @@ toggleable aiming aids, cinematic intro camera and in-game settings.*
 
 ## 📥 下载安装（Android）
 
-[![Download APK](https://img.shields.io/badge/下载_APK-v0.41_约70MB-brightgreen?style=for-the-badge)](https://github.com/laoye666-6/MySnooker3D/releases/latest)
+[![Download APK](https://img.shields.io/badge/下载_APK-v0.42_约70MB-brightgreen?style=for-the-badge)](https://github.com/laoye666-6/MySnooker3D/releases/latest)
 
-- **直接下载** → **[Snooker3D.apk](https://github.com/laoye666-6/MySnooker3D/releases/download/v0.41/Snooker3D.apk)**（约 70MB）
+- **直接下载** → **[Snooker3D.apk](https://github.com/laoye666-6/MySnooker3D/releases/download/v0.42/Snooker3D.apk)**（约 70MB）
 - 或前往 [**Releases 页面**](https://github.com/laoye666-6/MySnooker3D/releases) 查看全部版本与更新说明
 - **安装步骤**：下载 APK → 传到手机 → 点击安装；首次安装需在系统设置里允许「安装未知来源应用」
 - **系统要求**：Android 7.0+；支持 arm64-v8a 真机与 x86_64 模拟器（MuMu 等）
@@ -137,6 +137,21 @@ blender -b -P blender/make_icon.py      :: 应用图标
 - 更多细节见源码内中文注释
 
 ## 📝 更新记录
+
+### v0.42 —— 修正清彩阶段的阶段切换 / 瞄准微调步长降到十分之一
+
+- **清彩阶段混乱的根因**：阶段切换的触发条件写错了。WPBSA 2024-25 官方规则
+  Section 3 Rule 3(h)(ii) 的措辞是 **"a colour has been played at"** following the
+  potting of the last Red —— 只要求那颗"最后一红之后的任选彩球"**被击打过**，
+  **不要求打进**。所以这一杆无论**进球 / 未进 / 犯规**，之后的目标球都是**黄球**。
+  旧版只在【合法打进】时才切到清彩阶段，于是未进或犯规换手后接台方仍停留在
+  "任意彩球"、还能随便挑彩球打 —— 这就是混乱的根源。
+- 同时把源码里过时的条款号按 2024-25 版核对更正（"球 on 顺序"是 3(g)/3(h)，
+  旧编号 `3(e)/3(f)(ii)` 与 `Rule 10.3` 都不存在）。
+- **瞄准微调步长 0.0035 → 0.00035 rad**（0.2° → 0.02°）：原值在长台（约 3.5m）上
+  每按一次偏 12mm，而长台进球的角度容差只有零点几度，一按就越过目标、极难对准；
+  现在每按一次偏 1.2mm。真机实测连按 10 次 == 原来按 1 次。
+- 规则断言 44 → **54 条**（新增 10 条清彩用例）。回归全绿。
 
 ### v0.41 —— 袋口真实化：弧形颚部 / 台呢真洞下坠 / 晃袋
 
