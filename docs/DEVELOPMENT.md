@@ -34,7 +34,7 @@ E:\Snooker\
 │  └─ Editor\
 │     ├─ BuildGame.cs          # 命令行构建（-x86only 可选，仅模拟器调试用；版本号在此改）
 │     ├─ PhysTest.cs           # 编辑器内离线物理回归测试（免打包快速验证）
-│     └─ RuleTest.cs           # 规则回归断言（54 条，不走物理、不需模拟器）
+│     └─ RuleTest.cs           # 规则回归断言（58 条，不走物理、不需模拟器）
 ├─ tools\                       # m.bat: adb 快捷命令 | sync.bat: unity_src → 工程 同步
 ├─ shots\                       # MuMu 验收截图（s01~s45 缺 s26 共 44 张 + v034_*.png 5 张 = 49 张）
 ├─ logs\                        # 构建/测试日志
@@ -81,7 +81,7 @@ E:\Snooker\tools\sync.bat
 :: 调试迭代可加 -x86only（只编 x86_64，IL2CPP 时间减半）
 :: 版本号在 unity_src\Editor\BuildGame.cs 改：versionName 0.NN = 第 NN 次迭代，versionCode 同步递增
 
-:: 3. 规则回归（改规则后必跑，期望 PASS=54 FAIL=0 + ALL RULES OK）
+:: 3. 规则回归（改规则后必跑，期望 PASS=58 FAIL=0 + ALL RULES OK）
 "E:\Program files\2022.3.62f3c1\Editor\Unity.exe" -batchmode -quit -nographics ^
   -projectPath "E:\Snooker3D" -executeMethod RuleTest.Run -logFile "E:\Snooker\logs\ruletest.log"
 
@@ -169,7 +169,7 @@ E:\Snooker\tools\sync.bat
 14. **规则判定必须写成纯函数**：v0.33 那个"清彩阶段目标球与白球同杆落袋 → 该球不回点、目标又无法
     推进 → 一局永远打不完"的致命死局，根因就是规则判断散在 `GameManager` 的物理结算里，
     只能在模拟器上真打才可能发现。v0.34 起规则集中在 `SnookerRules.cs`（纯函数），
-    由 `Editor/RuleTest.cs` 离线断言（v0.34 为 30 条，v0.35 扩至 **44 条**）。**改规则必须跑它。**
+    由 `Editor/RuleTest.cs` 离线断言（v0.34 为 30 条，v0.35 扩至 44 条，v0.43 为 **58 条**）。**改规则必须跑它。**
 15. **UI 不要重复乘缩放系数**：`CanvasScaler(match 0.5)` 的 scaleFactor 已经等于 `K()`，
     再给 `RectTransform.anchoredPosition` 乘 `K()` 就是二次缩放（147 横幅与设置面板曾因此错位）。
     IMGUI 文字同理：`CRect` 已含 `k`，别再乘。
@@ -297,6 +297,12 @@ E:\Snooker\tools\sync.bat
     Section 3 Rule 3(g)/(h)，"球 on 的定义"在 Section 2 Rule 11，
     而"换手后回红球"根本没有独立条款号（是 3(g) 的直接推论）。
     照旧号读规则会找错条款、进而误判语义。**改规则前先确认规则书年份与编号**。
+38. **"任选彩球"必须按【指定】的那颗计分**（v0.43）：Section 3 Rule 3(h)(i) 说
+    "the next ball on is a colour of the striker's choice **which, if potted, is scored**" ——
+    计分的必须是**被指定为球 on 的那颗**。旧版对"任选彩球"分支无条件 `legalPts += G.Value(k)`，
+    于是"指定蓝球、打进绿球"被算成合法 3 分（应为罚 5 分）。
+    **教训**：`switch` 里"看起来总是合法"的分支，往往漏了"对象是否匹配"的校验；
+    规则里凡出现"指定的球""球 on"这类限定词，都要在计分前比对一次。
 
 ## 已验证（MuMu 实测）
 
@@ -331,6 +337,21 @@ E:\Snooker\tools\sync.bat
 - GitHub Release：v0.40（Latest，含 APK）、v0.35、v0.33
 
 ## 版本记录
+
+### v0.43（第 43 次迭代）—— 修正"任选彩球"未按指定球计分
+
+依据 WPBSA 2024-25 Section 3 Rule 3(h)(i)："the next ball on is a colour of the striker's
+choice which, **if potted, is scored**" —— 计分的必须是**被指定为球 on 的那颗**彩球。
+指定蓝球却打进绿球，属于"打进非球 on"（Rule 11(b)(iii)）→ 犯规、本杆不得分、该彩球回点。
+
+旧版对"任选彩球"分支一律 `legalPts += G.Value(k)`（**不比对**指定球），于是
+"指定蓝球、进了绿球"会被算成合法的 **3 分**（实际应为**罚 5 分**）。
+这类错误在实战里很容易被当成"手气好"而蒙混过去 —— 是逐条审规则时用构造式断言查出来的。
+
+修正后：指定球与实际进球不符 → 按 `max(4, 球 on 分值, 涉及球分值)` 罚分、
+进球回点、本杆不计分；未指定时仍按宽松处理（进袋的那颗事后认定，与真实裁判一致）。
+
+**回归：规则 58/58（较 v0.42 新增 4 条"指定球"断言）、开球、库边 3/3、加塞全过、袋口 6/6。**
 
 ### v0.42（第 42 次迭代）—— 修正"清彩阶段"阶段切换 / 微调步长降到十分之一
 

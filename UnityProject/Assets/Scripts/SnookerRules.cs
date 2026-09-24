@@ -284,8 +284,21 @@ public static class SnookerRules
                         if (reason == null) reason = "误落" + G.CnName(k);
                         break;
                     case BallOnKind.FreeColor:
-                        legalPts += G.Value(k);                            // 任意彩球：合法得分
-                        pottedColor = true; pottedColorKind = k;
+                        // Rule 3(h)(i)：计分的必须是【被指定为球 on 的那颗】彩球。
+                        // 指定了 A 却进了 B → 打进非球 on（Rule 11(b)(iii)）→ 犯规、不得分、B 回点。
+                        // 未指定时不追究（本作的指定是"准线指向哪颗就算指定哪颗"，
+                        // 没指定时进袋的那颗视为事后认定，这也是真实裁判的宽松处理）。
+                        if (f.nominatedSet && k != f.nominated)
+                        {
+                            foulPts = Mathf.Max(foulPts, Penalty(onVal, G.Value(k)));
+                            if (reason == null) reason = "误落" + G.CnName(k) +
+                                                       "(球 on 是" + G.CnName(f.nominated) + ")";
+                        }
+                        else
+                        {
+                            legalPts += G.Value(k);                    // 任意彩球：合法得分
+                            pottedColor = true; pottedColorKind = k;
+                        }
                         break;
                     default: // SequenceColor
                         if (k == seqTarget)

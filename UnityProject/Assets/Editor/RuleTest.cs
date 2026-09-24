@@ -321,6 +321,49 @@ public static class RuleTest
                   "respot=" + string.Join(",", oc6.respotColors) + " target=" + oc6.nextTargetColor);
         }
 
+        // ---- 16m~16p：任选彩球阶段必须按【指定】的那颗计分（v0.42 修正）----
+        //
+        // 依据 WPBSA 2024-25 Section 3 Rule 3(h)(i)："the next ball on is a colour of the
+        // striker's choice which, if potted, is scored" —— 计分的必须是**被指定为球 on 的那颗**。
+        // 指定蓝球却进了绿球 = 打进非球 on（Section 3 Rule 11(b)(iii)）→ 犯规，
+        // 罚分 max(4, 球 on 分值, 涉及球分值)，且该彩球回点、本杆不得分。
+        // 旧版对 FreeColor 一律 `legalPts += G.Value(k)`，不比对指定球 ——
+        // 指定蓝球打进绿球会被算成合法的 3 分（应为罚 5 分）。
+        {
+            var pre = St(false, true, 0, AllColors());          // 最后一红后，任选彩球待打
+
+            // 16m：指定蓝球、先碰蓝球、但进袋的是绿球 → 犯规 5 分（球 on=蓝 5）、绿球回点、不得分
+            var oc = SnookerRules.Evaluate(pre,
+                FN(false, BallKind.Blue, true, BallKind.Blue, false, BallKind.Green), 10, 10);
+            Check("16m.指定蓝球却进绿球 → 犯规5分、绿球回点、不得分",
+                  oc.foulPts == 5 && oc.legalPts == 0 && Has(oc.respotColors, BallKind.Green),
+                  "foul=" + oc.foulPts + " legal=" + oc.legalPts +
+                  " respot=" + string.Join(",", oc.respotColors));
+
+            // 16n：指定绿球、先碰绿球、进袋绿球 → 合法 3 分、绿球回点
+            var oc2 = SnookerRules.Evaluate(pre,
+                FN(false, BallKind.Green, true, BallKind.Green, false, BallKind.Green), 10, 10);
+            Check("16n.指定绿球并进绿球 → 合法3分、绿球回点",
+                  oc2.foulPts == 0 && oc2.legalPts == 3 && Has(oc2.respotColors, BallKind.Green),
+                  "foul=" + oc2.foulPts + " legal=" + oc2.legalPts +
+                  " respot=" + string.Join(",", oc2.respotColors));
+
+            // 16o：指定蓝球、先碰绿球（未指定球）→ 犯规（首触非球 on）
+            var oc3 = SnookerRules.Evaluate(pre,
+                FN(false, BallKind.Green, true, BallKind.Blue, false), 10, 10);
+            Check("16o.指定蓝球却先碰绿球 → 犯规",
+                  oc3.foulPts > 0,
+                  "foul=" + oc3.foulPts + " reason=" + oc3.reason);
+
+            // 16p：指定蓝球、进蓝球同时误带绿球 → 犯规（取高者 5）、两颗都回点
+            var oc4 = SnookerRules.Evaluate(pre,
+                FN(false, BallKind.Blue, true, BallKind.Blue, false, BallKind.Blue, BallKind.Green), 10, 10);
+            Check("16p.指定蓝球同时误落绿球 → 犯规5分、蓝绿都回点",
+                  oc4.foulPts == 5 && Has(oc4.respotColors, BallKind.Blue) &&
+                  Has(oc4.respotColors, BallKind.Green),
+                  "foul=" + oc4.foulPts + " respot=" + string.Join(",", oc4.respotColors));
+        }
+
         // ---- 17. 清彩阶段打进目标彩球后才进入下一颗；打进非目标球不改目标 ----
         {
             var pre = St(true, false, 0, ColorsMinus(BallKind.Yellow));   // 黄球已清，当前目标=绿

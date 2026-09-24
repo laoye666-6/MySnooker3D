@@ -1,6 +1,6 @@
 # MySnooker3D 🎱
 
-**双人斯诺克 3D** —— 基于 Unity 的安卓双人同屏斯诺克游戏（当前为 Beta v0.42）。标准比赛尺寸球桌由 Blender
+**双人斯诺克 3D** —— 基于 Unity 的安卓双人同屏斯诺克游戏（当前为 Beta v0.43）。标准比赛尺寸球桌由 Blender
 脚本化建模，真实物理（PhysX + 自定义滚动摩擦），**按 WPBSA 官方规则实现的斯诺克规则**
 （红彩交替、清彩、彩球回点、罚分取值、只剩黑球时的终局判定），可开关辅助瞄准线，
 内置入场运镜动画与设置界面（帧率 / 分辨率 / 阴影）。
@@ -12,9 +12,9 @@ toggleable aiming aids, cinematic intro camera and in-game settings.*
 
 ## 📥 下载安装（Android）
 
-[![Download APK](https://img.shields.io/badge/下载_APK-v0.42_约70MB-brightgreen?style=for-the-badge)](https://github.com/laoye666-6/MySnooker3D/releases/latest)
+[![Download APK](https://img.shields.io/badge/下载_APK-v0.43_约70MB-brightgreen?style=for-the-badge)](https://github.com/laoye666-6/MySnooker3D/releases/latest)
 
-- **直接下载** → **[Snooker3D.apk](https://github.com/laoye666-6/MySnooker3D/releases/download/v0.42/Snooker3D.apk)**（约 70MB）
+- **直接下载** → **[Snooker3D.apk](https://github.com/laoye666-6/MySnooker3D/releases/download/v0.43/Snooker3D.apk)**（约 70MB）
 - 或前往 [**Releases 页面**](https://github.com/laoye666-6/MySnooker3D/releases) 查看全部版本与更新说明
 - **安装步骤**：下载 APK → 传到手机 → 点击安装；首次安装需在系统设置里允许「安装未知来源应用」
 - **系统要求**：Android 7.0+；支持 arm64-v8a 真机与 x86_64 模拟器（MuMu 等）
@@ -137,6 +137,16 @@ blender -b -P blender/make_icon.py      :: 应用图标
 - 更多细节见源码内中文注释
 
 ## 📝 更新记录
+
+### v0.43 —— 修正"任选彩球"未按指定球计分
+
+WPBSA Section 3 Rule 3(h)(i)："the next ball on is a colour of the striker's choice
+**which, if potted, is scored**" —— 计分的必须是**被指定为球 on 的那颗**彩球。
+
+旧版对"任选彩球"分支无条件按进袋的球加分，**不比对**指定球：指定蓝球却打进绿球会被
+算成合法的 3 分，而按规则应判犯规、罚 5 分（打进非球 on，Rule 11(b)(iii)）且该球回点。
+修正后按指定球比对，不符即罚分、回点、本杆不计分。
+回归 58/58。
 
 ### v0.42 —— 修正清彩阶段的阶段切换 / 瞄准微调步长降到十分之一
 
