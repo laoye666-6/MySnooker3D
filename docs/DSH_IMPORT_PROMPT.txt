@@ -6,8 +6,8 @@
 ■ 项目：安卓双人同屏斯诺克游戏 —— 完整官方斯诺克规则、真实物理、可开关辅助瞄准线、
   贝塞尔入场运镜、设置界面（帧率/分辨率/阴影/物理步长）、单杆分 HUD、147 提示、加塞杆法
 ■ 技术栈：Unity 2022.3.62f3c1（IL2CPP，ARM64+X86_64）+ Blender 5.2 脚本化建模 + MuMu 模拟器实测
-■ 当前版本：v0.41（第 41 次迭代）；APK：E:\Snooker3D\Builds\Snooker3D.apk
-■ 已开源：https://github.com/laoye666-6/MySnooker3D （public / MIT，Release v0.41 已带 APK）
+■ 当前版本：v0.42（第 42 次迭代）；APK：E:\Snooker3D\Builds\Snooker3D.apk
+■ 已开源：https://github.com/laoye666-6/MySnooker3D （public / MIT，Release v0.42 已带 APK）
 
 ■ 路径（全部实测有效）
 - 源码母本（权威）：E:\Snooker\unity_src\Scripts（11 个 cs）+ unity_src\Editor（4 个）
@@ -62,7 +62,7 @@ cmd //c E:\Snooker\tools\sync.bat
 "E:\Program files\2022.3.62f3c1\Editor\Unity.exe" -batchmode -quit -nographics ^
   -projectPath "E:\Snooker3D" -executeMethod BuildGame.BuildAndroid -logFile "E:\Snooker\logs\build.log"
 :: 四道回归（都不能加 -nographics 的只有 PhysTest 系；RuleTest 可加）
-  -executeMethod RuleTest.Run        期望 PASS=44 FAIL=0 + ALL RULES OK
+  -executeMethod RuleTest.Run        期望 PASS=54 FAIL=0 + ALL RULES OK
   -executeMethod PhysTest.SpinTest   期望 ALL SPIN OK
   -executeMethod PhysTest.CushionTest 期望三个 bounced=True
   -executeMethod PhysTest.Run        开球回归

@@ -1,4 +1,4 @@
-# 双人斯诺克 3D —— 项目上下文总结（截至 v0.41，2026-09-23）
+# 双人斯诺克 3D —— 项目上下文总结（截至 v0.42，2026-09-24）
 
 > 本文件为完整压缩上下文，供导入 DSH 等 AI 助手继续开发使用。
 > 项目根目录：`E:\Snooker`（工作区）；Unity 工程：`E:\Snooker3D`
@@ -64,7 +64,7 @@
 - `BuildGame.cs` — 命令行构建（`-x86only` 调试；**版本号在此改**；写入应用图标；构建后自校验版本）
 - `PhysTest.cs` — 离线物理回归（`Run` 开球；`CushionTest` 库边三用例；`SpinTest` 加塞，
   步长 2ms 与运行时一致）
-- `RuleTest.cs` — **44 条规则断言**（不走物理、不需模拟器）
+- `RuleTest.cs` — **54 条规则断言**（不走物理、不需模拟器）
 - `ShotTest.cs` — v0.38 新增：编辑器内自动截图驱动（时间线出 9 张关键帧，替代每轮装模拟器；
   运行方式与四个坑见 README 踩坑 23）
 
@@ -89,7 +89,7 @@ cmd //c E:\Snooker\tools\sync.bat
   -projectPath "E:\Snooker3D" -executeMethod BuildGame.BuildAndroid ^
   -logFile "E:\Snooker\logs\build.log"
 
-:: 规则回归（改规则后必跑，期望 PASS=44 FAIL=0 + ALL RULES OK）
+:: 规则回归（改规则后必跑，期望 PASS=54 FAIL=0 + ALL RULES OK）
 "E:\Program files\2022.3.62f3c1\Editor\Unity.exe" -batchmode -quit -nographics ^
   -projectPath "E:\Snooker3D" -executeMethod RuleTest.Run -logFile "E:\Snooker\logs\ruletest.log"
 

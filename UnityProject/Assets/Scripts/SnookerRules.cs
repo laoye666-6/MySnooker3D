@@ -8,27 +8,26 @@
 //   GameManager：把结果落到比分/回点/物理/UI 上
 //   Editor/RuleTest.cs：对着一堆构造出来的局面做断言，不走物理也能回归规则
 //
-// ---------------- 依据规则（WPBSA/USSA 官方规则 Section 3，2024-25 版）-----------------
-//   Rule 3(e)(f)      球 on 顺序：红 → 彩（任选并【指定】）→ 红 → 彩 …… 红球清完后仍需
-//                     打一颗"任意彩球"，之后才按 黄绿咖啡蓝粉黑 升序清彩（3(f)(ii)）
-//   Rule 3(f)(i)(b)   球 on 为彩球时必须指定哪一颗；未指定就击球属犯规，罚分按 4 分下限
-//   Rule 10.3         只要台面还有红球，接台方（新一轮击球权的第一杆）永远以红球为球 on
-//                     —— v0.33 的核心规则错误（换手后没复位"任意彩球"），v0.34 修正
-//   Rule 10           罚分：默认 4 分，或"球 on 分值 / 涉及球分值"取高者；连续两杆打红
-//                     （10(d)(iv)）7 分；空杆与白球落袋按球 on 分值取（10(a)）；同杆多犯规取最高（11(g)）
-//   Rule 11(e)        犯规杆打进的所有球一律不计分；彩球回点、红球不回点（3(g)）
-//   Rule 11(b)(c)     Foul and a Miss（犯规与未击到）：未先击中球 on 且当时【未被斯诺克】
-//                     （存在直接击打线路）时判 Miss。判罚之外接台方有权选择：
-//                       (a) 从当前球位自己打（默认）
-//                       (b) 要求犯规方从当前球位重打（replay）
-//                     Miss 不额外加分；本作实现选项 a/b（未实现"连续三次 Miss 判负"）
-//   Rule 12           Free Ball（自由球）：犯规后接台方对所有球 on 都被斯诺克时，可指定
-//                     任意一颗球作为"球 on"打完这一杆：打进按【真实球 on 的分值】计分，
-//                     该球回点（即使是红球也回点），之后按真实球 on 继续
-//   Rule 4(a)(b)      只剩黑球时：第一次得分或犯规即终局；仅当比分因此打平时才重置黑球
-//                     继续（下一杆的得分或犯规同样立即终局）
-//   Rule 7(d)(e)      彩球回点：自己的点被占 → 用分值最高的空点 → 再向顶库方向就近；
-//                     多颗彩球同时回点时高分球优先
+// ---------------- 依据规则（WPBSA 官方规则 Section 3，2024-25 版）-----------------
+//   注意：本注释的条款号已按 2024-25 版核对过（旧版编号不同，勿沿用旧号）。
+//   3(g)      台面还有红球时，每一轮的第一杆都是红球（或当红球打的自由球）
+//   3(h)(i)   进红（或当红打的自由球）→ 同一球员接着打一颗【任选彩球】；
+//             该彩球打进计分后【回点】（"until finally potted under Section 3 Rule 3(h)(iii)"）
+//   3(h)(ii)  红球全部离台【且"最后一红之后有彩球被击打过"】之后，彩球才开始升序成为球 on
+//             ★ 注意措辞是 "a colour has been played AT" —— 只要求【击打过】，不要求打进。
+//               v0.42 修正的核心 bug：旧版只在"合法打进"时才切阶段，导致未进/犯规后
+//               接台方仍可任选彩球，清彩阶段因此混乱。
+//   3(h)(iii) 彩球随即按分值升序成为球 on，进袋后不再回点（Rule 4 除外）
+//   Rule 2    球 on 为彩球时必须【指定】哪一颗；未指定就击球属犯规，罚分按 4 分下限
+//             （旧版规则书里这条编号是 3(f)(i)(b)；2024-25 版编号已变，勿沿用旧号）
+//   10        罚分：默认 4 分，或"球 on 分值 / 涉及球分值"取高者；连续两杆打红 7 分；
+//             空杆与白球落袋按球 on 分值取；同杆多犯规取最高
+//   11(e)     犯规杆打进的所有球一律不计分；彩球回点、红球不回点
+//   11(b)(c)  Foul and a Miss（犯规与未击到）：未先击中球 on 且当时【未被斯诺克】时判 Miss
+//   12        Free Ball（自由球）：犯规后接台方对所有球 on 都被斯诺克时可指定任意球当球 on；
+//             打进按【真实球 on 的分值】计分且回点
+//   4(a)(b)   只剩黑球时：第一次得分或犯规即终局；仅当比分因此打平时才重置黑球继续
+//   7(d)(e)   彩球回点：自己的点被占 → 用分值最高的空点 → 再向顶库方向就近；高分球优先
 //
 // ---------------- 有意从简的实现（就地标注）-----------------
 //   - 自由球的"是否被斯诺克"由 GameManager 用几何射线判定（含"两侧都能打到"的近似），
@@ -346,40 +345,47 @@ public static class SnookerRules
         }
 
         // ---- ⑤ 新状态：球 on 与阶段推进 ----
+        //
+        // 依据（WPBSA 2024-25 Section 3 Rule 3）：
+        //   3(g)      台面还有红球时，每一轮的第一杆都是红球
+        //   3(h)(i)   打进红球（或当红球打的自由球）→ 同一球员接着打一颗【任选彩球】
+        //   3(h)(ii)  红球全部离台【且"最后一红之后有彩球被击打过"】之后，彩球才开始升序成为球 on
+        //   3(h)(iii) 彩球随即按分值升序成为球 on，进袋后不再回点（Rule 4 除外）
+        //
+        // ★ 关键（v0.42 修正的核心）：3(h)(ii) 的条件是"a colour has been played AT"
+        //   —— 只要求那颗任选彩球【被击打过】，**不要求打进**。所以"进最后一红 → 打彩球"
+        //   这一杆无论进球、未进还是犯规，之后的目标球都是黄球。
+        //   旧版只在【合法打进】那颗彩球时才切到清彩阶段，未进/犯规时会继续停留在
+        //   "任意彩球"，导致接台方仍然可以随便挑彩球打 —— 这就是清彩阶段混乱的根因。
         int postReds = Mathf.Max(0, pre.redsLeft - redsPotted);
-        bool nextColors = pre.colorsPhase;
-        bool nextFree = pre.freeColorPending;
         bool scored = !foul && legalPts > 0;
 
-        if (scored)
+        // 本杆是否"相当于打进了一颗红球"：红球阶段合法进红，或自由球在红球阶段被打进
+        bool asRed = !foul && (on == BallOnKind.Red
+                                   ? pottedRed
+                                   : on == BallOnKind.FreeBall && freeBallPotted && pre.redsLeft > 0);
+
+        bool nextColors, nextFree;
+        if (postReds > 0)
         {
-            switch (on)
-            {
-                case BallOnKind.Red:
-                    nextFree = true; nextColors = false;               // 进红 → 下一杆任意彩球（Rule 3(f)(i)）
-                    break;
-                case BallOnKind.FreeColor:
-                    nextFree = false;                                  // 任意彩球打完
-                    if (postReds == 0 && !r.frameOver) nextColors = true;   // 且红球已清完 → 升序清彩（3(f)(ii)）
-                    break;
-                case BallOnKind.FreeBall:
-                    // Rule 12：自由球打完后按真实球 on 继续——
-                    //   真实球 on 是红球 → 下一杆打任意彩球（等同于刚进红）
-                    //   真实球 on 是清彩目标 → 继续同一颗目标球
-                    if (pre.redsLeft > 0) { nextFree = true; nextColors = false; }
-                    else { nextFree = pre.freeColorPending; nextColors = pre.colorsPhase; }
-                    break;
-                default:
-                    nextFree = false; nextColors = true;               // 清彩阶段继续下一颗
-                    break;
-            }
+            // 仍有红球：接着打任选彩球（本杆当红进），否则下一杆回红球（Rule 3(g)）
+            nextColors = false;
+            nextFree = asRed;
+        }
+        else if (pre.colorsPhase && !pre.freeColorPending)
+        {
+            // 已在清彩阶段：继续升序（目标球是否推进由 nextTargetColor 推出）
+            nextColors = true;
+            nextFree = false;
         }
         else
         {
-            // 换手：Rule 10.3 —— 只要台面还有红球，接台方永远打红球（v0.33 在这里漏了复位）
-            if (postReds > 0) { nextFree = false; nextColors = false; }
-            else if (pre.colorsPhase) { nextFree = false; nextColors = true; }   // 清彩阶段：目标球不变
-            else { nextFree = true; nextColors = false; }                        // 最后一红后的任意彩球仍待打
+            // 红球已清完，且本杆不是清彩阶段的杆 —— 本杆只可能是：
+            //   ① 打进最后一红（或犯规时最后一红落袋）→ 还需击打一颗任选彩球
+            //   ② 刚刚【击打过】那颗任选彩球 → 彩球自此升序成为球 on（Rule 3(h)(ii)(iii)）
+            bool thisWasFreeChoiceStroke = pre.freeColorPending && !pre.colorsPhase;
+            nextColors = thisWasFreeChoiceStroke;
+            nextFree = !thisWasFreeChoiceStroke;
         }
 
         r.handover = !scored;

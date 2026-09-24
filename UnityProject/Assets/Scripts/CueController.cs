@@ -70,7 +70,13 @@ public class CueController : MonoBehaviour
     /// 注意：测试脚本通过 adb swipe 计算像素位移时也用这个系数换算。
     public float Sensitivity = 0.0018f;
 
-    /// 精确旋转指定弧度（UI 上 ◀ ▶ 按钮每次调 ±0.0035，即 ±0.2°）。
+    /// 微调按钮每次的方向增量（弧度）。v0.42：0.0035 → 0.00035（原来的十分之一）。
+    /// 原值 0.0035 rad ≈ 0.2°：长台（约 3.5m）上等于偏 12mm，比球半径（26mm）小不了多少，
+    /// 而长台进球的角度容差只有零点几度 —— 一按就越过目标，根本没法微调。
+    /// 降到 0.00035（≈0.02°）后，长台上每按一次只偏 1.2mm，可以逐步逼近目标点。
+    public const float NudgeStep = 0.00035f;
+
+    /// 精确旋转指定弧度（UI 上 ◀ ▶ 按钮调用，见 NudgeStep）。
     /// 同时把角度规范到 [0, 2π) 区间，防止无限累加后浮点精度下降。
     public void Rotate(float deltaRad)
     {

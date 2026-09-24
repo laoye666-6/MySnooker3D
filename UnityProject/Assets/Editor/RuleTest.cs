@@ -222,19 +222,103 @@ public static class RuleTest
                   "pts=" + oc.legalPts + " respot=" + string.Join(",", oc.respotColors) + " free=" + oc.nextFreeColorPending);
         }
 
-        // ---- 16. 最后一颗红球进袋后仍要打一颗任意彩球；该杆犯规换手后接台方仍打任意彩球（Rule 3(f)(ii)）----
+        // ---- 16. 最后一红之后的"任选彩球 → 升序清彩"切换（v0.42 修正）----
+        //
+        // 依据 WPBSA 2024-25 Section 3 Rule 3(h)：
+        //   (i)   进红（或当红打的自由球）→ 同一球员打一颗任选彩球，进袋计分后【回点】
+        //   (ii)  红球全部离台、且"最后一红之后有彩球被【击打过】"之后 → 彩球开始升序成为球 on
+        //   (iii) 彩球随即按分值升序成为球 on，进袋后不再回点
+        //
+        // ★ 3(h)(ii) 的措辞是 "a colour has been played AT" —— 只要求那颗任选彩球
+        //   【被击打过】，不要求打进。旧版只在"合法打进"时才切阶段，所以未进/犯规后
+        //   接台方仍能任选彩球打（清彩阶段混乱的根因）。以下 16b~16e 锁死正确行为。
         {
             var pre1 = St(false, false, 1, AllColors());
             var oc1 = SnookerRules.Evaluate(pre1, F(false, BallKind.Red, BallKind.Red), 10, 10);
-            Check("16.最后一红进袋后仍需打任意彩球",
+            Check("16.最后一红进袋后仍需打任选彩球",
                   oc1.nextFreeColorPending && !oc1.nextColorsPhase,
                   "free=" + oc1.nextFreeColorPending + " colors=" + oc1.nextColorsPhase);
 
-            var pre2 = St(false, true, 0, AllColors());                  // 红球已清完，任意彩球未打
-            var oc2 = SnookerRules.Evaluate(pre2, F(true, BallKind.Red), 10, 10);   // 该杆犯规换手
-            Check("16b.接台方仍以任意彩球为球 on",
-                  oc2.nextFreeColorPending && !oc2.nextColorsPhase,
-                  "free=" + oc2.nextFreeColorPending + " colors=" + oc2.nextColorsPhase);
+            // 16b：任选彩球这一杆【空杆】（没碰到任何球）→ 已"击打过彩球"，升序开始 → 黄球
+            var pre2 = St(false, true, 0, AllColors());
+            var oc2 = SnookerRules.Evaluate(pre2, F(true, BallKind.Red), 10, 10);
+            Check("16b.任选彩球空杆后 → 接台方打黄球(而非继续任选)",
+                  oc2.nextColorsPhase && !oc2.nextFreeColorPending &&
+                  oc2.nextTargetColor == BallKind.Yellow,
+                  "free=" + oc2.nextFreeColorPending + " colors=" + oc2.nextColorsPhase +
+                  " target=" + oc2.nextTargetColor);
+
+            // 16c：任选彩球这一杆【打进了】（指定蓝球并进袋）→ 蓝球回点、升序从黄球开始
+            var oc3 = SnookerRules.Evaluate(pre2, F(false, BallKind.Blue, BallKind.Blue), 10, 10);
+            Check("16c.任选彩球打进后 → 该彩球回点、目标为黄球",
+                  oc3.nextColorsPhase && !oc3.nextFreeColorPending &&
+                  oc3.nextTargetColor == BallKind.Yellow && Has(oc3.respotColors, BallKind.Blue),
+                  "colors=" + oc3.nextColorsPhase + " target=" + oc3.nextTargetColor +
+                  " respot=" + string.Join(",", oc3.respotColors));
+
+            // 16d：任选彩球这一杆【犯规】（先碰彩球但白球落袋）→ 同样进入升序，目标黄球
+            var oc4 = SnookerRules.Evaluate(pre2, F(false, BallKind.Green, BallKind.Cue), 10, 10);
+            Check("16d.任选彩球犯规后 → 同样进入升序清彩、目标黄球",
+                  oc4.foulPts > 0 && oc4.nextColorsPhase && !oc4.nextFreeColorPending &&
+                  oc4.nextTargetColor == BallKind.Yellow,
+                  "foul=" + oc4.foulPts + " colors=" + oc4.nextColorsPhase +
+                  " target=" + oc4.nextTargetColor);
+
+            // 16e：台面【还有红球】时，任选彩球没打进 → 接台方回红球（Rule 3(g)）
+            var pre5 = St(false, true, 5, AllColors());
+            var oc5 = SnookerRules.Evaluate(pre5, F(false, BallKind.Brown), 10, 10);
+            Check("16e.仍有红球时任选彩球未进 → 接台方打红球",
+                  !oc5.nextColorsPhase && !oc5.nextFreeColorPending,
+                  "free=" + oc5.nextFreeColorPending + " colors=" + oc5.nextColorsPhase);
+
+            // 16f：仍有红球时任选彩球【打进】→ 接台方回红球（该彩球回点）
+            var oc6 = SnookerRules.Evaluate(pre5, F(false, BallKind.Brown, BallKind.Brown), 10, 10);
+            Check("16f.仍有红球时任选彩球进袋 → 回点、接台方打红球",
+                  !oc6.nextColorsPhase && !oc6.nextFreeColorPending &&
+                  Has(oc6.respotColors, BallKind.Brown),
+                  "free=" + oc6.nextFreeColorPending + " colors=" + oc6.nextColorsPhase +
+                  " respot=" + string.Join(",", oc6.respotColors));
+        }
+
+        // ---- 16g~16l：清彩阶段的球 on 推进与犯规（Rule 3(h)(iii) / Rule 10）----
+        {
+            // 16g：清彩阶段合法进黄 → 目标绿、黄球不回点、同一球员继续
+            var p = St(true, false, 0, AllColors());
+            var oc = SnookerRules.Evaluate(p, F(false, BallKind.Yellow, BallKind.Yellow), 10, 10);
+            Check("16g.清彩进黄 → 得2分、黄球不回点、目标绿、继续击球",
+                  oc.legalPts == 2 && oc.respotColors.Length == 0 &&
+                  oc.nextTargetColor == BallKind.Green && !oc.handover,
+                  "pts=" + oc.legalPts + " respot=" + oc.respotColors.Length +
+                  " target=" + oc.nextTargetColor + " handover=" + oc.handover);
+
+            // 16h：清彩阶段【先碰非目标球】→ 犯规、目标不变（接台方仍打同一颗）
+            var oc2 = SnookerRules.Evaluate(p, F(false, BallKind.Brown), 10, 10);
+            Check("16h.清彩先碰棕球(目标黄) → 犯规4分、目标仍为黄球",
+                  oc2.foulPts == 4 && oc2.nextTargetColor == BallKind.Yellow && oc2.handover,
+                  "foul=" + oc2.foulPts + " target=" + oc2.nextTargetColor + " handover=" + oc2.handover);
+
+            // 16i：清彩阶段误落高分彩球 → 罚分取高分球值（进黄同时误落黑 → 7 分）
+            var oc3 = SnookerRules.Evaluate(p, F(false, BallKind.Yellow, BallKind.Yellow, BallKind.Black), 10, 10);
+            Check("16i.清彩进黄同时误落黑 → 罚7分、两颗都回点",
+                  oc3.foulPts == 7 && Has(oc3.respotColors, BallKind.Yellow) &&
+                  Has(oc3.respotColors, BallKind.Black) && oc3.legalPts == 0,
+                  "foul=" + oc3.foulPts + " legal=" + oc3.legalPts +
+                  " respot=" + string.Join(",", oc3.respotColors));
+
+            // 16j：只剩黑球时犯规（空杆）→ 罚 7 分（球 on 为黑）
+            var pb = St(true, false, 0, new[] { BallKind.Black });
+            var oc4 = SnookerRules.Evaluate(pb, F(true, BallKind.Black), 10, 10);
+            Check("16j.只剩黑球时空杆 → 罚7分", oc4.foulPts == 7, "foul=" + oc4.foulPts);
+
+            // 16k：清彩阶段白球落袋 → 罚 4 分（球 on 为黄=2，取最低 4）
+            var oc5 = SnookerRules.Evaluate(p, F(false, BallKind.Yellow, BallKind.Cue), 10, 10);
+            Check("16k.清彩阶段白球落袋 → 罚4分", oc5.foulPts == 4, "foul=" + oc5.foulPts);
+
+            // 16l：清彩阶段目标球与白球同杆落袋 → 目标球回点、目标不变（v0.33 死局）
+            var oc6 = SnookerRules.Evaluate(p, F(false, BallKind.Yellow, BallKind.Yellow, BallKind.Cue), 10, 10);
+            Check("16l.清彩目标球与白球同杆落袋 → 目标球回点、目标仍为黄球",
+                  Has(oc6.respotColors, BallKind.Yellow) && oc6.nextTargetColor == BallKind.Yellow,
+                  "respot=" + string.Join(",", oc6.respotColors) + " target=" + oc6.nextTargetColor);
         }
 
         // ---- 17. 清彩阶段打进目标彩球后才进入下一颗；打进非目标球不改目标 ----

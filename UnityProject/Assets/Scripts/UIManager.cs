@@ -146,12 +146,14 @@ public class UIManager : MonoBehaviour
         Btn("AimHudBtn", cgo.transform, new Vector2(0.5f, 0.5f),
             Fit(new Vector2(-820, -448), new Vector2(240, 62)), new Vector2(240, 62),
             new Color(0.16f, 0.30f, 0.55f), ToggleAim);
+        // v0.42：微调步长改为 CueController.NudgeStep（0.00035 rad ≈ 0.02°），
+        // 原来是 0.0035（≈0.2°）——长台上按一次偏 12mm，几乎无法对准。详见该常量注释。
         Btn("NudgeL", cgo.transform, new Vector2(0.5f, 0.5f),
             Fit(new Vector2(-660, -448), new Vector2(70, 62)), new Vector2(70, 62),
-            new Color(0.20f, 0.23f, 0.32f), () => cc.Rotate(-0.0035f));
+            new Color(0.20f, 0.23f, 0.32f), () => cc.Rotate(-CueController.NudgeStep));
         Btn("NudgeR", cgo.transform, new Vector2(0.5f, 0.5f),
             Fit(new Vector2(-586, -448), new Vector2(70, 62)), new Vector2(70, 62),
-            new Color(0.20f, 0.23f, 0.32f), () => cc.Rotate(+0.0035f));
+            new Color(0.20f, 0.23f, 0.32f), () => cc.Rotate(+CueController.NudgeStep));
         Btn("RestartBtn", cgo.transform, new Vector2(0.5f, 0.5f),
             Fit(new Vector2(-820, -364), new Vector2(240, 58)), new Vector2(240, 58),
             new Color(0.42f, 0.22f, 0.16f), () => UnityEngine.SceneManagement.SceneManager.LoadScene(0));
