@@ -62,7 +62,34 @@ public class ShotDriver : MonoBehaviour
         // "entering play mode"，一张图都抓不到）。截图尺寸就用 Game 视图的实际尺寸，
         // 想看大图请手动在 Game 视图里选 1600x900 分辨率档。
         Application.runInBackground = true;
+        done = false;
+        StartCoroutine(Heartbeat());
+        StartCoroutine(Watchdog());
         StartCoroutine(Seq());
+    }
+
+    static bool done;                                    // 时间线完成标记（看门狗用）
+
+    /// 心跳：每 5s 报一次真实时间，用于判断"协程没推进"时玩家循环是否还活着。
+    IEnumerator Heartbeat()
+    {
+        float t0 = Time.unscaledTime;
+        while (!done)
+        {
+            yield return Wait(5f);
+            Debug.Log("[SHOT] hb " + (Time.unscaledTime - t0).ToString("F1") + "s");
+        }
+    }
+
+    /// 看门狗：时间线 150s 未完成（编辑器卡死/协程挂起）则强制退出，不留僵死进程。
+    IEnumerator Watchdog()
+    {
+        yield return Wait(150f);
+        if (!done)
+        {
+            Debug.LogError("[SHOT] watchdog：时间线 150s 未完成，强制退出编辑器");
+            EditorApplication.Exit(3);
+        }
     }
 
     /// 等待真实秒数（不依赖帧刷新，见 Start 里的说明）。
@@ -73,8 +100,20 @@ public class ShotDriver : MonoBehaviour
         var gm = GameManager.I;
         if (gm == null) { Debug.LogError("[SHOT] GameManager 未就绪"); EditorApplication.Exit(2); yield break; }
 
+        // v0.44：先把物理步长强制回 2ms 并持久化。时间线 ④ 演示档位会切到 0.5ms，
+        // 若一轮没跑完（编辑器卡死被强杀等），PlayerPrefs 留下的 0.5ms 会让下一轮
+        // 以 2000Hz 物理启动——22 球 + 127 布料碰撞体在编辑器里首帧慢到像"卡死"
+        // （实测连续几轮 ShotTest 间歇性白屏无产出的元凶，见 logs/shot_glass2~6）。
+        GameSettings.StepIndex = 2;
+        GameSettings.Apply();
+        GameSettings.Save();
+
         // ---- ① 主菜单（等入场运镜 + 菜单淡入完成）----
-        yield return Wait(4.4f);
+        // 菜单淡入锚定 Time.timeSinceLevelLoad(3.0~3.8s)，而本协程的 WaitForSecondsRealtime
+        // 从播放模式进入就开始走——首次编译/域重载/贴图编译会拖慢场景加载，固定秒数
+        // 总会"截在淡入前"（shot_glass8/jelly 两轮复现）。改为直接等 levelLoad 时钟，
+        // 与淡入同一时间基准，彻底消除抖动。
+        while (Time.timeSinceLevelLoad < 5.2f) yield return null;
         yield return Shot("01_menu");
 
         // ---- ② 开局后的瞄准 HUD ----
@@ -143,6 +182,7 @@ public class ShotDriver : MonoBehaviour
         }
 
         Debug.Log("[SHOT] DONE");
+        done = true;
         yield return Wait(0.3f);
         EditorApplication.Exit(0);
     }

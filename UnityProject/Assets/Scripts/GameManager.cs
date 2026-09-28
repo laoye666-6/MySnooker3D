@@ -62,6 +62,12 @@ public class GameManager : MonoBehaviour
     [HideInInspector] public BallKind nominatedColor = BallKind.Black; // 球 on 为彩球时指定的球
     [HideInInspector] public bool nominatedSet;     // 是否已指定（准线指向彩球即为指定）
     [HideInInspector] public bool canReplay;        // 上一杆判 Miss → 接台方可要求犯规方重打
+    /// v0.45：Miss 选框（让对手重打/我自己打）尚未处理时锁定击球。
+    /// 官方依据 WPBSA 2024-25 Section 3 Rule 14(b)（判 Miss 后由接台方选择要求
+    /// 犯规方重打或自己击球）与 Rule 13（选择一经提出不可撤回）——选择权必须
+    /// 先于下一杆行使。此前选框弹出后仍可直接出杆：既静默放弃了选择权，
+    /// 又会让选框残留成无法关闭的僵尸弹窗。
+    public bool ChoicePending => canReplay;
     private int missCount;                          // 本局连续 Miss 次数（仅日志，未实现三次判负）
 
     // ---- v0.36：球在手（开球前 / 白球落袋后可在 D 区内自由摆放，Rule 3 开球与 Rule 8 犯规） ----
@@ -263,6 +269,7 @@ public class GameManager : MonoBehaviour
     public void Shoot(Vector3 dir, float power01, float spinV = 0f, float spinH = 0f)
     {
         if (state != State.Aiming) return;
+        if (ChoicePending) return;                        // v0.45：Miss 选择未处理，禁止击球（Rule 13/14(b)）
         if (SnapshotBroken()) RestoreSnapshot();          // 暂停导致的球位异常先修复
         // v0.35：记录"出杆瞬间是否被斯诺克"，供结算时判定 Miss（Rule 11(b)）
         shotWasSnookered = IsSnookered();

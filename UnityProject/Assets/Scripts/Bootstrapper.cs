@@ -252,6 +252,11 @@ public class Bootstrapper : MonoBehaviour
         cam.farClipPlane = 60f;
         cam.clearFlags = CameraClearFlags.SolidColor;
         cam.backgroundColor = new Color(0.055f, 0.07f, 0.09f);
+        // v0.44f：液态玻璃的折射/反射源。场景采样三方案（GrabPass/命令缓冲/
+        // OnRenderImage）在真机 GLES3 上均间歇性黑帧，最终改用最保守的多相机
+        // 渲染：GlassSceneCamera 子相机每帧把场景绘到半分辨率 RT（确定性 100%），
+        // LiquidGlass.shader 采样它做清澈折射 + 光源光晕。
+        camGo.AddComponent<GlassSceneCamera>();
     }
 
     /// 场景用到的所有 Standard 材质的集合（集中创建，避免重复 new）。

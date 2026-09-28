@@ -6,16 +6,16 @@
 //     uGUI legacy Text 依赖动态字体图集，部分安卓机会整片空白，IMGUI 实测稳定。
 //   - 文字坐标用 CRect()：屏幕中心 + (设计坐标-设计中心)×k，与 uGUI 中心锚定精确对齐。
 //
-// 动画系统（v0.31）：
-//   - 入场：GameCamera 播 3.4s 俯冲飞行；菜单在 3.0s 起淡入（0.8s），与相机衔接
-//   - 开始游戏/结算面板：CanvasGroup alpha 渐入渐出
-//   - 设置面板：从右侧滑入 + 淡入（easeOutCubic 0.35s），关闭反向滑出
+// 视觉风格（v0.44 重做）：iOS「液态玻璃」——
+//   - 高饱和但偏淡的系统色（iOS 蓝/绿/橙），以半透明玻璃为主体；
+//   - 全部按钮为胶囊形（UIGlass 顶点网格，零贴图，见该文件说明）；
+//   - 玻璃与背景交互：菜单期大面板用 LiquidGlass.shader 抓背景模糊，
+//     游戏内 HUD 只用半透明（GrabPass 的全屏拷贝不适合 60~144fps 的对局中）；
+//   - 中央提示配玻璃胶囊底（iOS 通知条），文字仍走 IMGUI；
+//   - 按钮触感反馈见 Haptics.cs（按下轻点、主按钮确认重点）。
 //
 // 设置面板：帧率上限（60/90/120/144）/ 渲染分辨率（50%/75%/100%）/ 画面阴影（开/关），
 //           改动即通过 GameSettings.Apply() 生效并持久化（PlayerPrefs）。
-//
-// 美化（v0.31）：所有 IMGUI 文字带投影；uGUI 按钮加深色描边底 + 顶部高光条；
-//               菜单副标题下加金色装饰条；记分板加双方阵营色块。
 // =====================================================================================
 using System.Collections.Generic;
 using UnityEngine;
@@ -29,8 +29,6 @@ public class UIManager : MonoBehaviour
     private Slider power;
     private GameObject menu, over, settingsPanel;
     private CanvasGroup menuCG, overCG, settingsCG;      // 三个面板的渐变组
-    private Image menuImg;                               // 菜单遮罩（控制底色透明度）
-    private Color menuBaseCol;
     private RectTransform settingsPanelRT;               // 设置滑入位移用
     private CueController cc;
     private Material uiMat;
@@ -69,21 +67,47 @@ public class UIManager : MonoBehaviour
     // ---- v0.36：加塞圆盘 ----
     private SpinPad spinPad;                              // 击球点选择器（拖动小圆点选高/低杆与左右塞）
 
-    // ---- v0.38：原神风 UI 配色（深藏青底 + 金色描边/饰件）----
-    // 原神按钮的设计语言：深色半透面板、细金描边、顶部微光、四角小菱饰、主按钮带宝石菱。
-    private static readonly Color GoldLight = new Color(0.96f, 0.85f, 0.50f);   // 高光金
-    private static readonly Color Gold      = new Color(0.80f, 0.65f, 0.30f);   // 主金
-    private static readonly Color GoldDark  = new Color(0.47f, 0.37f, 0.16f);   // 描边金
-    private static readonly Color Navy      = new Color(0.09f, 0.11f, 0.16f, 0.96f); // 按钮底
-    private static readonly Color NavyPanel = new Color(0.07f, 0.09f, 0.13f, 0.97f); // 面板底
+    // ---- v0.44：中央提示的玻璃胶囊底（iOS 通知条风格；文字仍在 IMGUI 层）----
+    private CanvasGroup msgPillCG, cueHandPillCG, ballOnPillCG;
+    private UIGlass ballOnPill;                           // 指定彩球/自由球共用，随状态换色
 
-    /// 画一个旋转 45° 的小方块（菱形饰件，原风按钮的角饰/宝石）。
-    private GameObject Diamond(Transform parent, Vector2 pos, float size, Color col)
-    {
-        var go = Img("Diamond", parent, new Vector2(0.5f, 0.5f), pos, new Vector2(size, size), col);
-        go.transform.localRotation = Quaternion.Euler(0f, 0f, 45f);
-        return go;
-    }
+    // ---- v0.44：iOS 液态玻璃配色（高饱和但偏淡的系统色，以透明为主体）----
+    // 菜单期大面板：淡色磨砂玻璃——磨砂底不透明度高，模糊后的彩色场景从玻璃里透出
+    // 才有"液态玻璃"感（面板 alpha 太低时清晰场景直接穿透，磨砂感会消失）；
+    // 游戏内 HUD 与控件：真半透明浅玻璃 + 墨色字；主操作 = 系统绿胶囊。
+    private static readonly Color GlassSheet   = new Color(0.74f, 0.79f, 0.88f, 0.58f); // 菜单期淡磨砂底
+    private static readonly Color GlassPanel   = new Color(0.72f, 0.78f, 0.88f, 0.60f); // 设置面板磨砂
+    private static readonly Color GlassWhite   = new Color(1f, 1f, 1f, 0.24f);          // HUD 顶条
+    private static readonly Color GlassNeutral = new Color(1f, 1f, 1f, 0.28f);          // 次级按钮
+    private static readonly Color GlassStrong  = new Color(1f, 1f, 1f, 0.36f);          // 提示胶囊/弹层
+    private static readonly Color GlassGreen   = new Color(0.22f, 0.72f, 0.42f, 0.44f); // 主操作（iOS 绿）
+    private static readonly Color GlassBlue    = new Color(0.28f, 0.58f, 1f, 0.42f);    // 强调操作（iOS 蓝）
+    private static readonly Color MintPill     = new Color(0.74f, 0.95f, 0.80f, 0.34f); // "球在手/自由球"薄荷胶囊
+    private static readonly Color ChipBlue     = new Color(0.25f, 0.62f, 1f, 0.46f);    // 玩家1 阵营点
+    private static readonly Color ChipRed      = new Color(1f, 0.36f, 0.33f, 0.46f);    // 玩家2 阵营点
+    private static readonly Color Ink          = new Color(0.08f, 0.09f, 0.11f);        // 主文字（浅玻璃上）
+    private static readonly Color Ink2         = new Color(0.34f, 0.36f, 0.42f, 0.85f); // 次级文字
+    private static readonly Color AccentOrange = new Color(1f, 0.58f, 0.0f);            // 单杆分/147（iOS 橙）
+    private static readonly Color Rim          = new Color(1f, 1f, 1f, 0.55f);          // 玻璃边缘高光环
+    private static readonly Color Hairline     = new Color(1f, 1f, 1f, 0.30f);          // 分隔细线
+    private static readonly Color TextRed      = new Color(0.86f, 0.27f, 0.24f);        // 重新开局（iOS 红）
+
+    // ---- 字号规范（v0.44）：全部 IMGUI 文字引用下列常量，不再散落字面量。----
+    // 起因：此前各处手写 int 字号，同类中文出现了大小不一（如加塞盘"击球点"24 vs"中杆"26、
+    // 中央提示 36/30/24 三种并存、记分板"单杆"22 夹在 30 的玩家名中间）。
+    // 值为 1920×1080 设计像素，DrawLabel 内统一乘 K() 缩放到实际分辨率。
+    private const int FontTitle   = 76;  // 主菜单大标题
+    private const int FontBanner  = 64;  // 147 横幅"147"大数字
+    private const int FontOver    = 56;  // 结算面板"XX 获胜"
+    private const int FontPrimary = 46;  // 主操作按钮（击球/开始游戏/再来一局）+ 记分板单杆分大数字
+    private const int FontHead    = 42;  // 设置面板标题
+    private const int FontVal     = 40;  // 设置面板选项值与"完成"按钮
+    private const int FontLayer   = 34;  // 弹层主行：147 横幅"满分进行中"、Miss 弹窗按钮
+    private const int FontMenuBtn = 32;  // 主菜单按钮文字（按钮比 HUD 大一号，文字等比放大）
+    private const int FontMsg     = 30;  // 屏幕中央提示（开球/犯规/球在手/自由球/指定彩球/Miss 标题）与设置行标签
+    private const int FontArrow   = 30;  // ◀ ▶ 方向符号（HUD 与设置面板共用）
+    private const int FontBtn     = 28;  // HUD 常规文字（玩家名/单杆标签/中央行/力度/各按钮）
+    private const int FontSub     = 26;  // 次级行（菜单副标题/加塞盘两行/147"红黑连击"/Miss 副行）
 
     // =================================================================================
     // Build()：由 Bootstrapper 调用一次，搭出全部 UI。
@@ -112,18 +136,25 @@ public class UIManager : MonoBehaviour
         if (Object.FindObjectOfType<EventSystem>() == null)
             new GameObject("EventSystem", typeof(EventSystem), typeof(StandaloneInputModule));
 
-        // 顶部记分板底条 + 双方阵营色块（美化：蓝=玩家1，红=玩家2）
+        // 顶部记分板底条（iOS 导航栏式玻璃条）+ 双方阵营色点（iOS 蓝 / iOS 红，圆形）
         // v0.34：HUD 位置一律过 Fit() 夹进"可见设计安全区"。硬贴 1920×1080 边缘的写法
         //        在 20:9 机型上顶部记分板被裁、在 4:3 机型上左右两侧按钮被裁。
         //        （分辨率档位只等比改变像素密度、宽高比不变，所以此处算一次即可。）
         Rect vis = VisibleDesignRect();
         float topW = Mathf.Min(1920f, vis.width);              // 顶条宽度自适应可见宽度
-        Img("TopPanel", cgo.transform, new Vector2(0.5f, 0.5f),
-            Fit(new Vector2(0, 485), new Vector2(topW, 96)), new Vector2(topW, 96), new Color(0f, 0f, 0f, 0.55f));
-        Img("ChipP1", cgo.transform, new Vector2(0.5f, 0.5f),
-            Fit(new Vector2(-916, 492), new Vector2(28, 28)), new Vector2(28, 28), new Color(0.23f, 0.44f, 0.85f));
-        Img("ChipP2", cgo.transform, new Vector2(0.5f, 0.5f),
-            Fit(new Vector2(916, 492), new Vector2(28, 28)), new Vector2(28, 28), new Color(0.85f, 0.27f, 0.27f));
+        var topGlass = UIGlass.Add(cgo.transform, "TopPanel", new Vector2(0.5f, 0.5f),
+            Fit(new Vector2(0, 485), new Vector2(topW, 96)), new Vector2(topW, 96), GlassWhite, 0f);
+        topGlass.UseRefraction(1.5f, 12f, 1.1f, 0.9f, 0.6f, 0.55f);   // 顶条：实时折射+轻高光
+        var chipP1 = UIGlass.Add(cgo.transform, "ChipP1", new Vector2(0.5f, 0.5f),
+            Fit(new Vector2(-916, 492), new Vector2(28, 28)), new Vector2(28, 28), ChipBlue, 0f);
+        chipP1.shape = UIGlass.Shape.Circle;
+        chipP1.UseRefraction(1f, 10f, 1.3f, 1.0f, 0.6f, 0.55f);
+        chipP1.raycastTarget = false;
+        var chipP2 = UIGlass.Add(cgo.transform, "ChipP2", new Vector2(0.5f, 0.5f),
+            Fit(new Vector2(916, 492), new Vector2(28, 28)), new Vector2(28, 28), ChipRed, 0f);
+        chipP2.shape = UIGlass.Shape.Circle;
+        chipP2.UseRefraction(1f, 10f, 1.3f, 1.0f, 0.6f, 0.55f);
+        chipP2.raycastTarget = false;
 
         // ---- 力度滑条 ----
         // v0.34：宽 300→240、中心 630→600，右端由 780 收到 720，不再被"击球"按钮
@@ -142,39 +173,40 @@ public class UIManager : MonoBehaviour
         // 位置同样过 Fit()：4:3 机型上最右"击球"与最左"辅助线"按钮原本会被裁掉。
         Btn("ShootBtn", cgo.transform, new Vector2(0.5f, 0.5f),
             Fit(new Vector2(835, -452), new Vector2(180, 150)), new Vector2(180, 150),
-            new Color(0.16f, 0.55f, 0.25f), cc.BeginStrike, true);
+            GlassGreen, cc.BeginStrike, true);
         Btn("AimHudBtn", cgo.transform, new Vector2(0.5f, 0.5f),
             Fit(new Vector2(-820, -448), new Vector2(240, 62)), new Vector2(240, 62),
-            new Color(0.16f, 0.30f, 0.55f), ToggleAim);
+            GlassNeutral, ToggleAim);
         // v0.42：微调步长改为 CueController.NudgeStep（0.00035 rad ≈ 0.02°），
         // 原来是 0.0035（≈0.2°）——长台上按一次偏 12mm，几乎无法对准。详见该常量注释。
         Btn("NudgeL", cgo.transform, new Vector2(0.5f, 0.5f),
             Fit(new Vector2(-660, -448), new Vector2(70, 62)), new Vector2(70, 62),
-            new Color(0.20f, 0.23f, 0.32f), () => cc.Rotate(-CueController.NudgeStep));
+            GlassNeutral, () => cc.Rotate(-CueController.NudgeStep));
         Btn("NudgeR", cgo.transform, new Vector2(0.5f, 0.5f),
             Fit(new Vector2(-586, -448), new Vector2(70, 62)), new Vector2(70, 62),
-            new Color(0.20f, 0.23f, 0.32f), () => cc.Rotate(+CueController.NudgeStep));
+            GlassNeutral, () => cc.Rotate(+CueController.NudgeStep));
         Btn("RestartBtn", cgo.transform, new Vector2(0.5f, 0.5f),
             Fit(new Vector2(-820, -364), new Vector2(240, 58)), new Vector2(240, 58),
-            new Color(0.42f, 0.22f, 0.16f), () => UnityEngine.SceneManagement.SceneManager.LoadScene(0));
+            GlassNeutral, () => UnityEngine.SceneManagement.SceneManager.LoadScene(0));
         Btn("SettingsHudBtn", cgo.transform, new Vector2(0.5f, 0.5f),
             Fit(new Vector2(-540, -364), new Vector2(240, 58)), new Vector2(240, 58),
-            new Color(0.20f, 0.23f, 0.32f), ToggleSettings);
+            GlassNeutral, ToggleSettings);
 
         // ---- v0.36：加塞圆盘（击球点选择器）----
         // 位置在屏幕右下角"力度滑条/击球按钮"的正上方（设计中心 y=700，占 545~855），
         // 避开下方的力度百分比文字(y≈922)与击球按钮(y≥917)，也避开左侧的重新开局/设置按钮。
         // 拖动盘内小圆点即可选高杆/低杆/左右塞。
-        var padPanel = Img("SpinPanel", cgo.transform, new Vector2(0.5f, 0.5f),
+        // v0.44：面板=圆角玻璃 + 亮色描边环； SpinPad 自己画的"球面"也改成圆形玻璃。
+        var padPanel = UIGlass.Add(cgo.transform, "SpinPanel", new Vector2(0.5f, 0.5f),
             Fit(new Vector2(740, -160), new Vector2(250, 310)), new Vector2(250, 310),
-            NavyPanel);
-        // v0.40 修复：金描边做成面板的**第一个子物体**（渲染在最底），不要像 v0.38 那样
-        // 先在 cgo 下建边框、再 SetParent 重排 —— 真机上 Edge 会盖住整个面板（面板变金色、
-        // 圆盘子物体全部不可见），而**编辑器里看不出异常**（这正是它一直没被发现的原因）。
-        var padEdge = Img("SpinPanelEdge", padPanel.transform, new Vector2(0.5f, 0.5f),
-            Vector2.zero, new Vector2(258, 318), GoldDark);
-        padEdge.transform.SetAsFirstSibling();          // 沉到最底层，让面板本体压住边框
-        padPanel.GetComponent<Image>().raycastTarget = false;
+            GlassWhite, 28f);
+        var padRim = UIGlass.Add(padPanel.transform, "SpinPanelRim", new Vector2(0.5f, 0.5f),
+            Vector2.zero, new Vector2(256, 316), Rim, 30.5f);
+        padRim.shape = UIGlass.Shape.Ring;
+        padRim.rimWidth = 2.2f;
+        padRim.raycastTarget = false;
+        padPanel.UseRefraction(1.5f, 14f, 1.3f, 0.9f, 0.6f, 0.5f);
+        padPanel.raycastTarget = false;
         var padGo = new GameObject("SpinPad", typeof(RectTransform), typeof(CanvasRenderer), typeof(Image), typeof(SpinPad));
         var padRt = (RectTransform)padGo.transform;
         padRt.SetParent(padPanel.transform, false);
@@ -196,121 +228,136 @@ public class UIManager : MonoBehaviour
         mscaler.matchWidthOrHeight = 0.5f;
         mgo.transform.SetParent(transform, false);
 
-        // ---- 主菜单（带 CanvasGroup 做淡入淡出）----
-        menu = StretchImg("Menu", mgo.transform, new Color(0.01f, 0.05f, 0.03f, 0.80f));
-        menuBaseCol = menu.GetComponent<Image>().color;
-        menuImg = menu.GetComponent<Image>();
+        // ---- 主菜单（深色磨砂玻璃底 + CanvasGroup 淡入淡出；LiquidGlass 抓背景模糊）----
+        menu = UIGlass.Stretch(mgo.transform, "Menu", GlassSheet, true, 16f, 0.12f, 0.10f, 0.15f).gameObject;
         menuCG = menu.AddComponent<CanvasGroup>();
         menuCG.alpha = 0f;                                   // 入场动画期间不可见
         menuCG.blocksRaycasts = false;
         menuCG.interactable = false;
 
-        // 金色装饰条（副标题下方左右各一条，中央一枚菱形宝石 —— v0.38 原神风）
-        Img("BarL", menu.transform, new Vector2(0.5f, 0.5f), new Vector2(-280, -18), new Vector2(150, 5), Gold);
-        Img("BarR", menu.transform, new Vector2(0.5f, 0.5f), new Vector2(280, -18), new Vector2(150, 5), Gold);
-        Diamond(menu.transform, new Vector2(0, -18), 18f, Gold);
-        Diamond(menu.transform, new Vector2(0, -18), 8f, GoldLight);
-        // v0.39：标题上方的"双翼"细金线 + 副标题两端的渐细点，让标题区更像原神的卷轴题头
-        Img("TitleWingL", menu.transform, new Vector2(0.5f, 0.5f), new Vector2(-330, 62), new Vector2(210, 3),
-            new Color(Gold.r, Gold.g, Gold.b, 0.55f));
-        Img("TitleWingR", menu.transform, new Vector2(0.5f, 0.5f), new Vector2(330, 62), new Vector2(210, 3),
-            new Color(Gold.r, Gold.g, Gold.b, 0.55f));
-        Diamond(menu.transform, new Vector2(-440, 62), 10f, Gold);
-        Diamond(menu.transform, new Vector2(440, 62), 10f, Gold);
-
-        // v0.39：HUD 顶栏下沿一条金线（与按钮描边同一金色，统一视觉语言）
+        // v0.44：HUD 顶栏下沿一条发丝分隔线（原为金线；玻璃语言下用半透白）
         var topRt = cgo.transform.Find("TopPanel") as RectTransform;
         if (topRt != null)
-            Img("TopPanelGold", cgo.transform, new Vector2(0.5f, 0.5f),
-                new Vector2(0, 437), new Vector2(topW, 3), new Color(Gold.r, Gold.g, Gold.b, 0.75f));
+            Img("TopPanelHair", cgo.transform, new Vector2(0.5f, 0.5f),
+                new Vector2(0, 437), new Vector2(topW, 3), Hairline);
+
+        // ---- v0.44：中央提示的玻璃胶囊底（iOS 通知条；文字在 IMGUI 层，胶囊随文字显隐）----
+        // 位置与 OnGUI 里的 msgText(设计y=160)/球在手(300)/指定彩球(240) 一一对应：
+        // uGUI 中心锚定 y 向上 → pos.y = 540 - 设计y。
+        msgPillCG = MakePill("MsgPill", cgo.transform, new Vector2(0, 380), new Vector2(1400, 64), GlassStrong);
+        cueHandPillCG = MakePill("CueHandPill", cgo.transform, new Vector2(0, 240), new Vector2(1100, 52), MintPill);
+        ballOnPillCG = MakePill("BallOnPill", cgo.transform, new Vector2(0, 300), new Vector2(940, 52), GlassStrong);
+        ballOnPill = ballOnPillCG.GetComponent<UIGlass>();
+        // 力度百分比文字的胶囊底（常显：随 HUD 整体 CanvasGroup 一起淡出，无需单独驱动）
+        var powerPillCG = MakePill("PowerPill", cgo.transform, new Vector2(600, -382), new Vector2(310, 46), GlassStrong);
+        powerPillCG.alpha = 1f;
 
         Btn("AimMenuBtn", menu.transform, new Vector2(0.5f, 0.5f), new Vector2(0, -40), new Vector2(400, 84),
-            new Color(0.16f, 0.30f, 0.55f), ToggleAim);
+            GlassNeutral, ToggleAim);
         Btn("SettingsMenuBtn", menu.transform, new Vector2(0.5f, 0.5f), new Vector2(0, -312), new Vector2(460, 96),
-            new Color(0.20f, 0.23f, 0.32f), ToggleSettings);
+            GlassNeutral, ToggleSettings);
         Btn("StartBtn", menu.transform, new Vector2(0.5f, 0.5f), new Vector2(0, -172), new Vector2(460, 116),
-            new Color(0.16f, 0.55f, 0.25f), () => GameManager.I.StartGame(), true);
+            GlassGreen, () => GameManager.I.StartGame(), true);
 
-        // ---- 结算面板 ----
-        over = StretchImg("Over", mgo.transform, new Color(0f, 0f, 0f, 0.80f));
+        // ---- 结算面板（深色磨砂玻璃底）----
+        over = UIGlass.Stretch(mgo.transform, "Over", GlassSheet, true, 16f, 0.12f, 0.10f, 0.15f).gameObject;
         overCG = over.AddComponent<CanvasGroup>();
         overCG.alpha = 0f;
         overCG.blocksRaycasts = false;
         overCG.interactable = false;
         Btn("AgainBtn", over.transform, new Vector2(0.5f, 0.5f), new Vector2(0, -140), new Vector2(460, 116),
-            new Color(0.16f, 0.55f, 0.25f), () => UnityEngine.SceneManagement.SceneManager.LoadScene(0));
+            GlassGreen, () => UnityEngine.SceneManagement.SceneManager.LoadScene(0), true);
 
-        // ---- 设置面板（全屏暗化底 + 中央面板，滑入动画）----
-        var settingsRoot = StretchImg("SettingsDim", mgo.transform, new Color(0f, 0f, 0f, 0.5f));
+        // ---- 设置面板（半透暗化底 + 磨砂玻璃大面板，滑入动画；iOS sheet 风格）----
+        var settingsRoot = StretchImg("SettingsDim", mgo.transform, new Color(0f, 0f, 0f, 0f));   // 暗化交给模糊层
         settingsCG = settingsRoot.AddComponent<CanvasGroup>();
         settingsCG.alpha = 0f;
         settingsCG.blocksRaycasts = false;
         settingsCG.interactable = false;
 
-        settingsPanel = Img("SettingsPanel", settingsRoot.transform, new Vector2(0.5f, 0.5f),
-            Vector2.zero, new Vector2(900, 760), new Color(0.09f, 0.12f, 0.15f, 0.97f));
+        // v0.44g：设置弹出时背景逐渐高斯模糊——全屏磨砂层是 settingsRoot 的子物体，
+        // 随 settingsCG 的淡入（= 滑入动画进度）同步出现，alpha 到 1 时背景完全变成
+        // 模糊场景（LiquidGlass 的 _Blur 14 = 高斯观感）。置于面板之下、暗化之上。
+        var settingsBlurBg = UIGlass.Stretch(settingsRoot.transform, "SettingsBlurBg",
+            new Color(0.16f, 0.18f, 0.22f, 0.82f), true, 14f, 0.06f, 0.02f, 0.18f);   // 暗色高斯模糊（iOS sheet 语言：暗底衬亮面板）
+        settingsBlurBg.raycastTarget = false;
+        settingsBlurBg.transform.SetAsFirstSibling();
+
+        var settingsGlass = UIGlass.Add(settingsRoot.transform, "SettingsPanel", new Vector2(0.5f, 0.5f),
+            Vector2.zero, new Vector2(900, 760), GlassPanel, 36f);
+        settingsGlass.UseBlur(16f, 0.14f, 0.10f, 0.15f);             // 与背景交互：抓取面板后的场景做模糊
+        // 玻璃边缘高光环：淡磨砂面板在亮台面上边界模糊，靠这圈高光勾出 sheet 轮廓
+        var setRim = UIGlass.Add(settingsRoot.transform, "SettingsPanelRim", new Vector2(0.5f, 0.5f),
+            Vector2.zero, new Vector2(908, 768), Rim, 40f);
+        setRim.shape = UIGlass.Shape.Ring;
+        setRim.rimWidth = 2.4f;
+        setRim.raycastTarget = false;
+        settingsPanel = settingsGlass.gameObject;
         settingsPanelRT = settingsPanel.GetComponent<RectTransform>();
         // 注意 y 符号：pos.y = 540 - 设计y（设计坐标从顶部往下，uGUI 中心锚定 y 向上）
         // 版面（v0.37 四行，自上而下）：标题 205 → 帧率 340 → 分辨率 465 → 阴影 590 →
-        // 物理步长 715 → 完成 845。v0.38：标题条改金描边 + 藏青底。
-        Img("SettingsHeaderEdge", settingsRoot.transform, new Vector2(0.5f, 0.5f), new Vector2(0, 335), new Vector2(900, 90),
-            GoldDark);
-        Img("SettingsHeader", settingsRoot.transform, new Vector2(0.5f, 0.5f), new Vector2(0, 335), new Vector2(892, 82),
-            NavyPanel);
-        Diamond(settingsRoot.transform, new Vector2(-390, 335), 14f, Gold);
-        Diamond(settingsRoot.transform, new Vector2(390, 335), 14f, Gold);
+        // 物理步长 715 → 完成 845。v0.44：标题条/菱饰移除，改 iOS sheet 的纯排版。
         Btn("FpsLeft", settingsRoot.transform, new Vector2(0.5f, 0.5f), new Vector2(-100, 200), new Vector2(110, 72),
-            new Color(0.20f, 0.23f, 0.32f), () => CycleSetting(0, -1));
+            GlassNeutral, () => CycleSetting(0, -1));
         Btn("FpsRight", settingsRoot.transform, new Vector2(0.5f, 0.5f), new Vector2(330, 200), new Vector2(110, 72),
-            new Color(0.20f, 0.23f, 0.32f), () => CycleSetting(0, +1));
+            GlassNeutral, () => CycleSetting(0, +1));
         Btn("ResLeft", settingsRoot.transform, new Vector2(0.5f, 0.5f), new Vector2(-100, 75), new Vector2(110, 72),
-            new Color(0.20f, 0.23f, 0.32f), () => CycleSetting(1, -1));
+            GlassNeutral, () => CycleSetting(1, -1));
         Btn("ResRight", settingsRoot.transform, new Vector2(0.5f, 0.5f), new Vector2(330, 75), new Vector2(110, 72),
-            new Color(0.20f, 0.23f, 0.32f), () => CycleSetting(1, +1));
+            GlassNeutral, () => CycleSetting(1, +1));
         Btn("ShadowLeft", settingsRoot.transform, new Vector2(0.5f, 0.5f), new Vector2(-100, -50), new Vector2(110, 72),
-            new Color(0.20f, 0.23f, 0.32f), () => CycleSetting(2, -1));
+            GlassNeutral, () => CycleSetting(2, -1));
         Btn("ShadowRight", settingsRoot.transform, new Vector2(0.5f, 0.5f), new Vector2(330, -50), new Vector2(110, 72),
-            new Color(0.20f, 0.23f, 0.32f), () => CycleSetting(2, +1));
+            GlassNeutral, () => CycleSetting(2, +1));
         // v0.37：物理步长三档 0.5/1/2ms（Time.fixedDeltaTime，改了立即生效、持久化）
         Btn("StepLeft", settingsRoot.transform, new Vector2(0.5f, 0.5f), new Vector2(-100, -175), new Vector2(110, 72),
-            new Color(0.20f, 0.23f, 0.32f), () => CycleSetting(3, -1));
+            GlassNeutral, () => CycleSetting(3, -1));
         Btn("StepRight", settingsRoot.transform, new Vector2(0.5f, 0.5f), new Vector2(330, -175), new Vector2(110, 72),
-            new Color(0.20f, 0.23f, 0.32f), () => CycleSetting(3, +1));
+            GlassNeutral, () => CycleSetting(3, +1));
         Btn("SettingsDoneBtn", settingsRoot.transform, new Vector2(0.5f, 0.5f), new Vector2(0, -305), new Vector2(360, 100),
-            new Color(0.16f, 0.55f, 0.25f), ToggleSettings, true);
-        // v0.38：行间金色分隔细线（原神设置面板的排版语言）
-        Img("Div1", settingsRoot.transform, new Vector2(0.5f, 0.5f), new Vector2(0, 137), new Vector2(780, 2), new Color(Gold.r, Gold.g, Gold.b, 0.35f));
-        Img("Div2", settingsRoot.transform, new Vector2(0.5f, 0.5f), new Vector2(0, 12), new Vector2(780, 2), new Color(Gold.r, Gold.g, Gold.b, 0.35f));
-        Img("Div3", settingsRoot.transform, new Vector2(0.5f, 0.5f), new Vector2(0, -113), new Vector2(780, 2), new Color(Gold.r, Gold.g, Gold.b, 0.35f));
-        Img("Div4", settingsRoot.transform, new Vector2(0.5f, 0.5f), new Vector2(0, -238), new Vector2(780, 2), new Color(Gold.r, Gold.g, Gold.b, 0.35f));
+            GlassGreen, ToggleSettings, true);
+        // v0.44：行间发丝分隔线（半透白）
+        Img("Div1", settingsRoot.transform, new Vector2(0.5f, 0.5f), new Vector2(0, 137), new Vector2(780, 2), Hairline);
+        Img("Div2", settingsRoot.transform, new Vector2(0.5f, 0.5f), new Vector2(0, 12), new Vector2(780, 2), Hairline);
+        Img("Div3", settingsRoot.transform, new Vector2(0.5f, 0.5f), new Vector2(0, -113), new Vector2(780, 2), Hairline);
+        Img("Div4", settingsRoot.transform, new Vector2(0.5f, 0.5f), new Vector2(0, -238), new Vector2(780, 2), Hairline);
 
-        // ---- 147 满分提示横幅（金描边 + 藏青底，平时藏在屏幕外）----
-        var popup = Img("Popup147", mgo.transform, new Vector2(0.5f, 0.5f), new Vector2(0, -270), new Vector2(1150, 150),
-            Gold);
-        Img("PopupIn", popup.transform, new Vector2(0.5f, 0.5f), Vector2.zero, new Vector2(1130, 134),
-            NavyPanel);
+        // ---- 147 满分提示横幅（白色玻璃胶囊，平时藏在屏幕外）----
+        var popup = UIGlass.Add(mgo.transform, "Popup147", new Vector2(0.5f, 0.5f), new Vector2(0, -270), new Vector2(1150, 150),
+            GlassStrong, 75f, true);
+        popup.raycastTarget = false;
         popupRT = popup.GetComponent<RectTransform>();
-        popupCG = popup.AddComponent<CanvasGroup>();
+        popupCG = popup.gameObject.AddComponent<CanvasGroup>();
         popupCG.alpha = 0f;
         popupCG.blocksRaycasts = false;
 
         // ---- v0.35：让对手重打 提示框（判 Miss 后显示，Rule 11(b)）----
         // 位置在屏幕中下方（不遮挡球堆与瞄准区），两个按钮左右并排
-        replayPanel = Img("ReplayPanel", mgo.transform, new Vector2(0.5f, 0.5f), new Vector2(0, -300), new Vector2(1160, 210),
-            Gold);                                                         // 金色描边
-        Img("ReplayIn", replayPanel.transform, new Vector2(0.5f, 0.5f), Vector2.zero, new Vector2(1140, 190),
-            NavyPanel);
+        var replayGlass = UIGlass.Add(mgo.transform, "ReplayPanel", new Vector2(0.5f, 0.5f), new Vector2(0, -300), new Vector2(1160, 210),
+            GlassStrong, 36f);
+        replayGlass.raycastTarget = true;                    // 面板自身挡住下面的按钮
+        replayPanel = replayGlass.gameObject;
+        // v0.45：全屏透明挡板（选框的子物体，继承其淡入/射线开关）——选框弹出期间
+        // 挡住屏幕上一切点击（击球/力度/瞄准），强制先做出选择（Rule 13/14(b)）。
+        // 放在两个选项按钮之前创建（渲染在底层），按钮仍可点击。
+        StretchImg("ReplayBlocker", replayPanel.transform, new Color(0f, 0f, 0f, 0f));
         Btn("ReplayYes", replayPanel.transform, new Vector2(0.5f, 0.5f), new Vector2(-290, -52), new Vector2(520, 84),
-            new Color(0.16f, 0.45f, 0.62f), ChooseReplay);
+            GlassBlue, ChooseReplay);
         Btn("ReplayNo", replayPanel.transform, new Vector2(0.5f, 0.5f), new Vector2(290, -52), new Vector2(520, 84),
-            new Color(0.22f, 0.26f, 0.34f), DismissReplay);
+            GlassNeutral, DismissReplay);
         replayCG = replayPanel.AddComponent<CanvasGroup>();
         replayCG.alpha = 0f;
         replayCG.blocksRaycasts = false;
         replayCG.interactable = false;
 
+        // 注意：这里的 uiMat 只赋给传统 Image（发丝线/暗化底等）；
+        // UIGlass 有自己的材质（磨砂面板= LiquidGlass，其余=默认 UI 材质），必须跳过，
+        // 否则玻璃材质会被覆盖成不透明色块。
         foreach (var g in mgo.GetComponentsInChildren<Graphic>())
+        {
+            if (g is UIGlass) continue;
             if (uiMat != null) g.material = uiMat;
+        }
 
         UpdateAimLabels();
 
@@ -365,6 +412,20 @@ public class UIManager : MonoBehaviour
         }
 
         if (msgTimer > 0f) msgTimer -= Time.deltaTime;
+
+        // ---- v0.44：中央提示胶囊底随文字显隐（显示条件与 OnGUI 的文字逐字对应）----
+        if (msgPillCG != null)
+        {
+            float pillTarget = (msgTimer > 0f && settingsAlpha < 0.4f) ? 1f : 0f;
+            msgPillCG.alpha = Mathf.MoveTowards(msgPillCG.alpha, pillTarget, Time.deltaTime / 0.15f);
+            bool cueVis = gm != null && gm.cueInHand && settingsAlpha < 0.4f;
+            cueHandPillCG.alpha = Mathf.MoveTowards(cueHandPillCG.alpha, cueVis ? 1f : 0f, Time.deltaTime / 0.15f);
+            bool ballVis = gm != null && gm.state == GameManager.State.Aiming && settingsAlpha < 0.4f &&
+                           (gm.freeBallActive || gm.freeColorPending || gm.colorsPhase);
+            ballOnPillCG.alpha = Mathf.MoveTowards(ballOnPillCG.alpha, ballVis ? 1f : 0f, Time.deltaTime / 0.15f);
+            if (ballOnPill != null)                          // 自由球=薄荷底，指定彩球=白底
+                ballOnPill.color = (gm != null && gm.freeBallActive) ? MintPill : GlassStrong;
+        }
 
         // ---- HUD 显隐（v0.34）：只在 Aiming/Rolling 显示 ----
         // 菜单期与结算期淡出，既消除"文字亮、按钮暗"的层级矛盾，也防止在菜单里点到击球/力度。
@@ -556,8 +617,8 @@ public class UIManager : MonoBehaviour
         return go;
     }
 
-    /// 美化版按钮（v0.38 原神风）：金色细描边 + 深藏青渐变底 + 四角菱形饰钉。
-    /// primary=true 时左侧再加一枚"宝石菱"（外金内白），用于主操作按钮（开始游戏/击球/完成）。
+    /// 玻璃胶囊按钮（v0.44 iOS 液态玻璃）：半透明淡彩胶囊 + 顶部高光条 + 亮色描边环。
+    /// primary=true 为主操作按钮（系统绿实色胶囊），点击带确认触感；所有按钮按下轻触感。
     private void Btn(string name, Transform parent, Vector2 anchor, Vector2 pos, Vector2 size, Color bg, UnityEngine.Events.UnityAction onClick)
     {
         Btn(name, parent, anchor, pos, size, bg, onClick, false);
@@ -565,34 +626,48 @@ public class UIManager : MonoBehaviour
 
     private void Btn(string name, Transform parent, Vector2 anchor, Vector2 pos, Vector2 size, Color bg, UnityEngine.Events.UnityAction onClick, bool primary)
     {
-        Img(name + "Edge", parent, anchor, pos, size + new Vector2(8, 8), GoldDark);   // 金描边
-        var go = Img(name, parent, anchor, pos, size, Navy);                            // 藏青底
-        // 渐变：顶部微光条 + 底部阴影条（模拟原神按钮的上亮下暗）
-        Img(name + "Sheen", go.transform, new Vector2(0.5f, 0.5f),
-            new Vector2(0, size.y * 0.36f), new Vector2(size.x - 8, size.y * 0.26f), new Color(1f, 1f, 1f, 0.07f));
-        Img(name + "Shade", go.transform, new Vector2(0.5f, 0.5f),
-            new Vector2(0, -size.y * 0.37f), new Vector2(size.x - 8, size.y * 0.24f), new Color(0f, 0f, 0f, 0.22f));
-        // 四角菱形饰钉
-        float dx = size.x * 0.5f - 10f, dy = size.y * 0.5f - 10f;
-        Diamond(go.transform, new Vector2(-dx,  dy), 9f, Gold);
-        Diamond(go.transform, new Vector2( dx,  dy), 9f, Gold);
-        Diamond(go.transform, new Vector2(-dx, -dy), 9f, Gold);
-        Diamond(go.transform, new Vector2( dx, -dy), 9f, Gold);
-        // 主操作按钮：左侧宝石菱（外金内白芯）
-        if (primary)
+        var go = new GameObject(name, typeof(RectTransform), typeof(CanvasRenderer), typeof(UIGlass), typeof(Button));
+        var rt = (RectTransform)go.transform;
+        rt.SetParent(parent, false);
+        rt.anchorMin = rt.anchorMax = anchor;
+        rt.anchoredPosition = pos;
+        rt.sizeDelta = size;
+        var body = go.GetComponent<UIGlass>();
+        body.shape = UIGlass.Shape.Capsule;                       // iOS 胶囊按钮（近正方形时≈圆形）
+        body.color = bg;
+        body.UseRefraction(1.0f, 28f, 1.6f, 1.25f, 0.7f, 0.70f);   // 清澈水玻璃：实时折射+反射+光晕
+        // 玻璃边缘的镜面高光环（罩在胶囊外沿，随圆角走）
+        var rim = UIGlass.Add(go.transform, name + "Rim", new Vector2(0.5f, 0.5f),
+            Vector2.zero, size + new Vector2(5, 5), Rim, (size.y + 5f) * 0.5f, true);
+        rim.shape = UIGlass.Shape.Ring;
+        rim.rimWidth = 2.2f;
+        rim.raycastTarget = false;
+        // 顶部高光条（玻璃上沿受光）。矮按钮（h<80，如 HUD 的一排小按钮）不放——
+        // 文字几乎占满整个按钮，高光条边缘会横穿文字，看起来像"删除线"。
+        if (size.y >= 80f)
         {
-            Diamond(go.transform, new Vector2(-size.x * 0.5f + 24f, 0f), 16f, Gold);
-            Diamond(go.transform, new Vector2(-size.x * 0.5f + 24f, 0f), 7f, GoldLight);
+            var sheen = UIGlass.Add(go.transform, name + "Sheen", new Vector2(0.5f, 0.5f),
+                new Vector2(0, size.y * 0.24f), new Vector2(size.x - 16, size.y * 0.5f),
+                new Color(1f, 1f, 1f, primary ? 0.16f : 0.30f), 0f, true);
+            sheen.raycastTarget = false;
         }
-        var b = go.AddComponent<Button>();
+        var b = go.GetComponent<Button>();
         var colors = b.colors;
-        colors.pressedColor = new Color(1.0f, 0.9f, 0.55f);       // 按下泛金
+        colors.pressedColor = primary ? new Color(0.80f, 0.93f, 0.85f) : new Color(0.86f, 0.89f, 0.96f); // 按下变暗一档
         colors.fadeDuration = 0.08f;
         b.colors = colors;
-        b.onClick.AddListener(onClick);
+        b.targetGraphic = body;
+        b.onClick.AddListener(() => { if (primary) Haptics.Tap(); onClick(); });  // 主按钮点击=确认触感
+        // 所有按钮：按下即轻点一下（iOS light impact）
+        var et = go.AddComponent<EventTrigger>();
+        var downEntry = new EventTrigger.Entry { eventID = EventTriggerType.PointerDown };
+        downEntry.callback.AddListener(_ => Haptics.Tick());
+        et.triggers.Add(downEntry);
+        // Q 弹按压动画：按下压扁、松手带过冲弹回（纯程序弹簧，见 UIJelly）
+        go.AddComponent<UIJelly>();
     }
 
-    /// 力度滑条（v0.38 原神风：金描边轨道 + 金色填充 + 菱形手柄）。
+    /// 力度滑条（v0.44 iOS 风：白色玻璃胶囊轨道 + 白色填充 + 圆形白球手柄 + 高光环）。
     private Slider MakeSlider(Transform parent, Vector2 anchor, Vector2 pos, Vector2 size)
     {
         var go = new GameObject("Power", typeof(RectTransform), typeof(CanvasRenderer), typeof(Image), typeof(Slider));
@@ -601,14 +676,12 @@ public class UIManager : MonoBehaviour
         rt.anchorMin = rt.anchorMax = anchor;
         rt.anchoredPosition = pos;
         rt.sizeDelta = size;
-        go.GetComponent<Image>().color = GoldDark;               // 外框=描边金
+        go.GetComponent<Image>().color = Color.clear;            // 根节点=透明热区（Slider 命中测试用）
 
-        var bgGo = new GameObject("BG", typeof(RectTransform), typeof(CanvasRenderer), typeof(Image));
-        var bgRt = (RectTransform)bgGo.transform;
-        bgRt.SetParent(rt, false);
-        bgRt.anchorMin = Vector2.zero; bgRt.anchorMax = Vector2.one;
-        bgRt.offsetMin = new Vector2(3, 13); bgRt.offsetMax = new Vector2(-3, -13);
-        bgGo.GetComponent<Image>().color = Navy;                 // 轨道=藏青
+        // 轨道：白色玻璃胶囊（iOS 滑杆的半透轨道）
+        var track = UIGlass.Add(rt, "Track", new Vector2(0.5f, 0.5f), Vector2.zero, size, new Color(1f, 1f, 1f, 0.18f), 0f, true);
+        track.UseRefraction(1.5f, 12f, 1.3f, 0.9f, 0.6f, 0.55f);
+        track.raycastTarget = false;
 
         var fillArea = new GameObject("FillArea", typeof(RectTransform));
         var faRt = (RectTransform)fillArea.transform;
@@ -616,12 +689,17 @@ public class UIManager : MonoBehaviour
         faRt.anchorMin = Vector2.zero; faRt.anchorMax = Vector2.one;
         faRt.offsetMin = new Vector2(6, 16); faRt.offsetMax = new Vector2(-6, -16);
 
-        var fill = new GameObject("Fill", typeof(RectTransform), typeof(CanvasRenderer), typeof(Image));
+        // 填充：随值伸缩，用胶囊网格自动适配（宽度归零时网格自动退化隐藏）
+        var fill = new GameObject("Fill", typeof(RectTransform), typeof(CanvasRenderer), typeof(UIGlass));
         var fRt = (RectTransform)fill.transform;
         fRt.SetParent(faRt, false);
         fRt.anchorMin = Vector2.zero; fRt.anchorMax = Vector2.one;
         fRt.sizeDelta = Vector2.zero;
-        fill.GetComponent<Image>().color = Gold;                 // 填充=主金
+        var fGlass = fill.GetComponent<UIGlass>();
+        fGlass.shape = UIGlass.Shape.Capsule;
+        fGlass.color = new Color(0.25f, 0.58f, 1f, 0.40f);   // iOS 蓝填充，与白轨道区分开
+        fGlass.UseRefraction(1f, 10f, 1.2f, 0.8f, 0.5f, 0.55f);
+        fGlass.raycastTarget = false;
 
         var handleArea = new GameObject("HandleArea", typeof(RectTransform));
         var haRt = (RectTransform)handleArea.transform;
@@ -629,23 +707,53 @@ public class UIManager : MonoBehaviour
         haRt.anchorMin = Vector2.zero; haRt.anchorMax = Vector2.one;
         haRt.offsetMin = new Vector2(10, 0); haRt.offsetMax = new Vector2(-10, 0);
 
-        // 手柄本体透明（Slider 需要一个 handleRect），视觉用菱形宝石：外金内白
+        // 手柄本体透明（Slider 需要一个 handleRect），视觉用白色玻璃圆球 + 高光环
         var handle = new GameObject("Handle", typeof(RectTransform), typeof(CanvasRenderer), typeof(Image));
         var hRt = (RectTransform)handle.transform;
         hRt.SetParent(haRt, false);
         hRt.anchorMin = new Vector2(0.5f, 0f); hRt.anchorMax = new Vector2(0.5f, 1f);
         hRt.sizeDelta = new Vector2(30, 0);
         handle.GetComponent<Image>().color = Color.clear;
-        Diamond(handle.transform, Vector2.zero, 34f, Gold);
-        Diamond(handle.transform, Vector2.zero, 15f, GoldLight);
+        var knob = UIGlass.Add(hRt, "Knob", new Vector2(0.5f, 0.5f), Vector2.zero, new Vector2(42, 42),
+            new Color(1f, 1f, 1f, 0.46f), 0f);
+        knob.shape = UIGlass.Shape.Circle;
+        knob.UseRefraction(1f, 14f, 1.6f, 1.2f, 0.65f, 0.65f);
+        knob.raycastTarget = false;
+        var knobRim = UIGlass.Add(hRt, "KnobRim", new Vector2(0.5f, 0.5f), Vector2.zero, new Vector2(46, 46), Rim, 23f);
+        knobRim.shape = UIGlass.Shape.Ring;
+        knobRim.raycastTarget = false;
 
+        // 手柄 Q 弹：拖住时放大、松手弹回（手柄自身不接收射线，由滑条根物体驱动）
+        var knobJelly = handle.AddComponent<UIJelly>();
+        knobJelly.pressScale = new Vector2(1.16f, 1.16f);
+        knobJelly.stiffness = 340f;
         var s = go.GetComponent<Slider>();
         s.fillRect = fRt;
         s.handleRect = hRt;
         s.targetGraphic = handle.GetComponent<Image>();
         s.direction = Slider.Direction.LeftToRight;
         s.minValue = 0f; s.maxValue = 1f;
+        var sEt = go.AddComponent<EventTrigger>();
+        var sDown = new EventTrigger.Entry { eventID = EventTriggerType.PointerDown };
+        sDown.callback.AddListener(_ => { knobJelly.SetHeld(true); Haptics.Tick(); });
+        var sUp = new EventTrigger.Entry { eventID = EventTriggerType.PointerUp };
+        sUp.callback.AddListener(_ => knobJelly.SetHeld(false));
+        sEt.triggers.Add(sDown);
+        sEt.triggers.Add(sUp);
         return s;
+    }
+
+    /// 中央提示的玻璃胶囊底（v0.44）：文字仍在 IMGUI 层，显隐由 Update 驱动 CanvasGroup。
+    private CanvasGroup MakePill(string name, Transform parent, Vector2 uguiPos, Vector2 size, Color col)
+    {
+        var g = UIGlass.Add(parent, name, new Vector2(0.5f, 0.5f), Fit(uguiPos, size), size, col, 0f, true);
+        g.UseRefraction(1.5f, 18f, 1.4f, 1.0f, 0.65f, 0.60f);
+        g.raycastTarget = false;
+        var cg = g.gameObject.AddComponent<CanvasGroup>();
+        cg.alpha = 0f;
+        cg.blocksRaycasts = false;
+        cg.interactable = false;
+        return cg;
     }
 
     // =================================================================================
@@ -743,7 +851,7 @@ public class UIManager : MonoBehaviour
         style.alignment = anchor;
         style.wordWrap = false;
 
-        style.normal.textColor = new Color(0f, 0f, 0f, 0.55f * col.a);   // 投影
+        style.normal.textColor = new Color(0f, 0f, 0f, 0.22f * col.a);   // 投影（玻璃更透后适当加重，保文字对比度）
         Rect sr = new Rect(r.x + 2, r.y + 2, r.width, r.height);
         GUI.Label(sr, text, style);
 
@@ -766,93 +874,96 @@ public class UIManager : MonoBehaviour
         // 注意：cx 是矩形【中心】，左对齐文字的 cx = 左边缘 + w/2，右对齐则 - w/2
         if (hudAlpha > 0.01f)
         {
-            Color breakGold = Fade(new Color(1f, 0.84f, 0.30f));
-            Color dimGray = Fade(new Color(0.72f, 0.75f, 0.78f));
-            DrawLabel(FittedRect(161, 48, 190, 76), p1Text, 30, Fade(Color.white), TextAnchor.MiddleLeft);       // 名字：左边缘 66
-            DrawLabel(FittedRect(303, 48, 90, 76), "单杆", 22, dimGray, TextAnchor.MiddleLeft);                    // 左边缘 258
-            DrawLabel(FittedRect(447, 48, 190, 76), p1Break, 46, breakGold, TextAnchor.MiddleLeft);                // 左边缘 352
-            DrawLabel(FittedRect(1749, 48, 190, 76), p2Text, 30, Fade(Color.white), TextAnchor.MiddleRight);        // 名字：右边缘 1844
-            DrawLabel(FittedRect(1585, 48, 90, 76), "单杆", 22, dimGray, TextAnchor.MiddleRight);                  // 右边缘 1630
-            DrawLabel(FittedRect(1435, 48, 190, 76), p2Break, 46, breakGold, TextAnchor.MiddleRight);              // 右边缘 1530
-            DrawLabel(FittedRect(960, 48, 900, 76), centerText, 28, Fade(new Color(1f, 0.92f, 0.6f)), TextAnchor.MiddleCenter);
+            Color breakGold = Fade(AccentOrange);
+            Color dimGray = Fade(Ink2);
+            Color ink = Fade(Ink);
+            DrawLabel(FittedRect(161, 48, 190, 76), p1Text, FontBtn, ink, TextAnchor.MiddleLeft);       // 名字：左边缘 66
+            DrawLabel(FittedRect(303, 48, 90, 76), "单杆", FontBtn, dimGray, TextAnchor.MiddleLeft);                    // 左边缘 258
+            DrawLabel(FittedRect(447, 48, 190, 76), p1Break, FontPrimary, breakGold, TextAnchor.MiddleLeft);                // 左边缘 352
+            DrawLabel(FittedRect(1749, 48, 190, 76), p2Text, FontBtn, ink, TextAnchor.MiddleRight);        // 名字：右边缘 1844
+            DrawLabel(FittedRect(1585, 48, 90, 76), "单杆", FontBtn, dimGray, TextAnchor.MiddleRight);                  // 右边缘 1630
+            DrawLabel(FittedRect(1435, 48, 190, 76), p2Break, FontPrimary, breakGold, TextAnchor.MiddleRight);              // 右边缘 1530
+            DrawLabel(FittedRect(960, 48, 900, 76), centerText, FontBtn, ink, TextAnchor.MiddleCenter);
             // v0.38：设置面板打开时不再画"XX 击球"提示——IMGUI 永远画在 uGUI 之上，
             // 会穿透设置面板标题条（真机截图确认）。同理下方"球在手"提示也受此保护。
             if (settingsAlpha < 0.4f)
-                DrawLabel(FittedRect(960, 160, 1400, 64), msgText, 36, Fade(new Color(1f, 0.85f, 0.25f)), TextAnchor.MiddleCenter);
-            DrawLabel(FittedRect(1560, 922, 300, 44), powerText, 28, Fade(Color.white), TextAnchor.MiddleCenter);
+                DrawLabel(FittedRect(960, 160, 1400, 64), msgText, FontMsg, ink, TextAnchor.MiddleCenter);
+            DrawLabel(FittedRect(1560, 922, 300, 44), powerText, FontBtn, ink, TextAnchor.MiddleCenter);
 
             // ---- HUD 按钮文字（与上面 Btn/Fit 的位置逐一对齐）----
-            DrawLabel(FittedRect(1920 - 125, 1080 - 88, 180, 150), "击球", 46, Fade(Color.white), TextAnchor.MiddleCenter);
-            DrawLabel(FittedRect(140, 1080 - 92, 240, 62), aimHudText, 28, Fade(Color.white), TextAnchor.MiddleCenter);
-            DrawLabel(FittedRect(300, 1080 - 92, 70, 62), "◀", 30, Fade(Color.white), TextAnchor.MiddleCenter);
-            DrawLabel(FittedRect(374, 1080 - 92, 70, 62), "▶", 30, Fade(Color.white), TextAnchor.MiddleCenter);
-            DrawLabel(FittedRect(140, 1080 - 176, 240, 58), "重新开局", 28, Fade(Color.white), TextAnchor.MiddleCenter);
-            DrawLabel(FittedRect(420, 1080 - 176, 240, 58), "设 置", 28, Fade(Color.white), TextAnchor.MiddleCenter);
+            DrawLabel(FittedRect(1920 - 125, 1080 - 88, 180, 150), "击球", FontPrimary, Fade(Color.white), TextAnchor.MiddleCenter);
+            DrawLabel(FittedRect(140, 1080 - 92, 240, 62), aimHudText, FontBtn, ink, TextAnchor.MiddleCenter);
+            DrawLabel(FittedRect(300, 1080 - 92, 70, 62), "◀", FontArrow, ink, TextAnchor.MiddleCenter);
+            DrawLabel(FittedRect(374, 1080 - 92, 70, 62), "▶", FontArrow, ink, TextAnchor.MiddleCenter);
+            DrawLabel(FittedRect(140, 1080 - 176, 240, 58), "重新开局", FontBtn, Fade(TextRed), TextAnchor.MiddleCenter);
+            DrawLabel(FittedRect(420, 1080 - 176, 240, 58), "设 置", FontBtn, ink, TextAnchor.MiddleCenter);
 
             // ---- v0.36：加塞圆盘文字（与 uGUI 面板逐像素对齐）----
             // 面板中心设计 y=700、尺寸 250×310；圆盘中心设计 y=708、半径 75
-            DrawLabel(FittedRect(1700, 595, 240, 40), "击球点", 24, Fade(new Color(0.80f, 0.84f, 0.90f)), TextAnchor.MiddleCenter);
-            DrawLabel(FittedRect(1700, 805, 240, 40), spinPad != null ? spinPad.Describe() : "中杆", 26, Fade(new Color(1f, 0.88f, 0.5f)), TextAnchor.MiddleCenter);
+            DrawLabel(FittedRect(1700, 595, 240, 40), "击球点", FontSub, dimGray, TextAnchor.MiddleCenter);
+            DrawLabel(FittedRect(1700, 805, 240, 40), spinPad != null ? spinPad.Describe() : "中杆", FontSub, ink, TextAnchor.MiddleCenter);
 
             // ---- v0.36："球在手"提示（开球前 / 白球落袋后可在 D 区内拖动白球）----
             var gmx = GameManager.I;
             if (gmx != null && gmx.cueInHand && settingsAlpha < 0.4f)
-                DrawLabel(FittedRect(960, 300, 1100, 52), "球在手：拖动白球可在开球区 D 内自由摆放", 30,
-                    Fade(new Color(0.55f, 0.95f, 0.65f)), TextAnchor.MiddleCenter);
+                DrawLabel(FittedRect(960, 300, 1100, 52), "球在手：拖动白球可在开球区 D 内自由摆放", FontMsg,
+                    ink, TextAnchor.MiddleCenter);
         }
 
         // ---- 主菜单（文字随菜单整体淡入；设置面板打开时再淡出避免与面板重叠）----
         if (menuAlpha > 0.01f)
         {
             float ma = menuAlpha * (1f - settingsAlpha * 0.95f);   // 设置打开时菜单文字让位
-            Color w = Color.white; w.a *= ma;
-            Color sub = new Color(0.85f, 0.9f, 1f); sub.a *= ma;
-            DrawLabel(CRect(960, 540 - 170, 1200, 120), "双人斯诺克 3D", 76, w, TextAnchor.MiddleCenter);
-            DrawLabel(CRect(960, 540 - 62, 1200, 50), "标准斯诺克规则 · 真实物理 · 轮流击球", 26, sub, TextAnchor.MiddleCenter);
-            DrawLabel(CRect(960, 540 + 40, 400, 84), aimMenuText, 32, w, TextAnchor.MiddleCenter);
-            DrawLabel(CRect(960, 540 + 180, 460, 116), "开始游戏", 46, w, TextAnchor.MiddleCenter);
-            DrawLabel(CRect(960, 540 + 290, 460, 96), "设 置", 32, w, TextAnchor.MiddleCenter);
+            Color w = Color.white; w.a *= ma;                      // 绿色主按钮上的白字
+            Color inkM = Ink; inkM.a *= ma;                        // 淡磨砂底上的墨色标题/按钮字
+            Color ink2M = Ink; ink2M.a *= ma * 0.8f;              // 次级副标题（比标题略淡）
+            DrawLabel(CRect(960, 540 - 170, 1200, 120), "双人斯诺克 3D", FontTitle, inkM, TextAnchor.MiddleCenter);
+            DrawLabel(CRect(960, 540 - 62, 1200, 50), "标准斯诺克规则 · 真实物理 · 轮流击球", FontSub, ink2M, TextAnchor.MiddleCenter);
+            DrawLabel(CRect(960, 540 + 40, 400, 84), aimMenuText, FontMenuBtn, inkM, TextAnchor.MiddleCenter);
+            DrawLabel(CRect(960, 540 + 180, 460, 116), "开始游戏", FontPrimary, w, TextAnchor.MiddleCenter);
+            DrawLabel(CRect(960, 540 + 290, 460, 96), "设 置", FontMenuBtn, inkM, TextAnchor.MiddleCenter);
         }
 
         // ---- 结算面板 ----
         if (overAlpha > 0.01f)
         {
-            Color w = Color.white; w.a *= overAlpha;
-            DrawLabel(CRect(960, 540 - 90, 1400, 220), overTextStr, 56, w, TextAnchor.MiddleCenter);
-            DrawLabel(CRect(960, 540 + 140, 460, 116), "再来一局", 44, w, TextAnchor.MiddleCenter);
+            Color inkO = Ink; inkO.a *= overAlpha;           // 淡磨砂底上的墨色标题
+            Color w = Color.white; w.a *= overAlpha;         // 绿色按钮上的白字
+            DrawLabel(CRect(960, 540 - 90, 1400, 220), overTextStr, FontOver, inkO, TextAnchor.MiddleCenter);
+            DrawLabel(CRect(960, 540 + 140, 460, 116), "再来一局", FontPrimary, w, TextAnchor.MiddleCenter);
         }
 
         // ---- 设置面板（文字随面板滑入位移 + 淡入）----
         if (settingsAlpha > 0.01f)
         {
             float sox = settingsOffset;                      // 与 uGUI 面板同量位移
-            Color w = Color.white; w.a *= settingsAlpha;
-            Color gold = new Color(1f, 0.84f, 0.35f); gold.a *= settingsAlpha;
-            Color gray = new Color(0.65f, 0.70f, 0.75f); gray.a *= settingsAlpha;
+            Color w = Color.white; w.a *= settingsAlpha;     // 绿色"完成"按钮上的白字
+            Color gray = Ink; gray.a *= settingsAlpha * 0.78f;   // 淡磨砂上的次级行标签（比 Ink 略淡但足够清晰）
+            Color inkS = Ink; inkS.a *= settingsAlpha;       // 淡磨砂上的墨色标题/值/箭头
 
-            DrawLabel(CRect(960 + sox, 205, 400, 70), "设 置", 42, gold, TextAnchor.MiddleCenter);
+            DrawLabel(CRect(960 + sox, 205, 400, 70), "设 置", FontHead, inkS, TextAnchor.MiddleCenter);
 
-            DrawLabel(CRect(700 + sox, 340, 260, 56), "帧率上限", 30, gray, TextAnchor.MiddleRight);
-            DrawLabel(CRect(1075 + sox, 340, 340, 64), GameSettings.FpsText, 40, w, TextAnchor.MiddleCenter);
-            DrawLabel(CRect(860 + sox, 340, 110, 72), "◀", 30, w, TextAnchor.MiddleCenter);
-            DrawLabel(CRect(1290 + sox, 340, 110, 72), "▶", 30, w, TextAnchor.MiddleCenter);
+            DrawLabel(CRect(655 + sox, 340, 260, 56), "帧率上限", FontMsg, gray, TextAnchor.MiddleRight);
+            DrawLabel(CRect(1075 + sox, 340, 340, 64), GameSettings.FpsText, FontVal, inkS, TextAnchor.MiddleCenter);
+            DrawLabel(CRect(860 + sox, 340, 110, 72), "◀", FontArrow, inkS, TextAnchor.MiddleCenter);
+            DrawLabel(CRect(1290 + sox, 340, 110, 72), "▶", FontArrow, inkS, TextAnchor.MiddleCenter);
 
-            DrawLabel(CRect(700 + sox, 465, 260, 56), "渲染分辨率", 30, gray, TextAnchor.MiddleRight);
-            DrawLabel(CRect(1075 + sox, 465, 340, 64), GameSettings.ResText, 40, w, TextAnchor.MiddleCenter);
-            DrawLabel(CRect(860 + sox, 465, 110, 72), "◀", 30, w, TextAnchor.MiddleCenter);
-            DrawLabel(CRect(1290 + sox, 465, 110, 72), "▶", 30, w, TextAnchor.MiddleCenter);
+            DrawLabel(CRect(655 + sox, 465, 260, 56), "渲染分辨率", FontMsg, gray, TextAnchor.MiddleRight);
+            DrawLabel(CRect(1075 + sox, 465, 340, 64), GameSettings.ResText, FontVal, inkS, TextAnchor.MiddleCenter);
+            DrawLabel(CRect(860 + sox, 465, 110, 72), "◀", FontArrow, inkS, TextAnchor.MiddleCenter);
+            DrawLabel(CRect(1290 + sox, 465, 110, 72), "▶", FontArrow, inkS, TextAnchor.MiddleCenter);
 
-            DrawLabel(CRect(700 + sox, 590, 260, 56), "画面阴影", 30, gray, TextAnchor.MiddleRight);
-            DrawLabel(CRect(1075 + sox, 590, 340, 64), GameSettings.ShadowText, 40, w, TextAnchor.MiddleCenter);
-            DrawLabel(CRect(860 + sox, 590, 110, 72), "◀", 30, w, TextAnchor.MiddleCenter);
-            DrawLabel(CRect(1290 + sox, 590, 110, 72), "▶", 30, w, TextAnchor.MiddleCenter);
+            DrawLabel(CRect(655 + sox, 590, 260, 56), "画面阴影", FontMsg, gray, TextAnchor.MiddleRight);
+            DrawLabel(CRect(1075 + sox, 590, 340, 64), GameSettings.ShadowText, FontVal, inkS, TextAnchor.MiddleCenter);
+            DrawLabel(CRect(860 + sox, 590, 110, 72), "◀", FontArrow, inkS, TextAnchor.MiddleCenter);
+            DrawLabel(CRect(1290 + sox, 590, 110, 72), "▶", FontArrow, inkS, TextAnchor.MiddleCenter);
 
-            DrawLabel(CRect(700 + sox, 715, 260, 56), "物理步长", 30, gray, TextAnchor.MiddleRight);
-            DrawLabel(CRect(1075 + sox, 715, 340, 64), GameSettings.StepText, 40, w, TextAnchor.MiddleCenter);
-            DrawLabel(CRect(860 + sox, 715, 110, 72), "◀", 30, w, TextAnchor.MiddleCenter);
-            DrawLabel(CRect(1290 + sox, 715, 110, 72), "▶", 30, w, TextAnchor.MiddleCenter);
+            DrawLabel(CRect(655 + sox, 715, 260, 56), "物理步长", FontMsg, gray, TextAnchor.MiddleRight);
+            DrawLabel(CRect(1075 + sox, 715, 340, 64), GameSettings.StepText, FontVal, inkS, TextAnchor.MiddleCenter);
+            DrawLabel(CRect(860 + sox, 715, 110, 72), "◀", FontArrow, inkS, TextAnchor.MiddleCenter);
+            DrawLabel(CRect(1290 + sox, 715, 110, 72), "▶", FontArrow, inkS, TextAnchor.MiddleCenter);
 
-            DrawLabel(CRect(960 + sox, 845, 360, 100), "完 成", 40, w, TextAnchor.MiddleCenter);
+            DrawLabel(CRect(960 + sox, 845, 360, 100), "完 成", FontVal, w, TextAnchor.MiddleCenter);
         }
 
         // ---- 147 满分提示横幅（文字随横幅从底部弹入）----
@@ -862,25 +973,25 @@ public class UIManager : MonoBehaviour
             // 注：uGUI 底图在屏幕中心锚定的 y=-270（y 轴向上），换算成 IMGUI 的设计 y（向下）
             //     正是 540+270=810；popupYoff 从 760 归零，所以底图与文字同向从下往上升。
             //     v0.33 这里写成 810-popupYoff，底图往上、文字却往下，动画全程错位数百像素。
-            Color gold = new Color(1f, 0.84f, 0.30f); gold.a *= popupAlpha;
-            Color goldLight = new Color(1f, 0.92f, 0.55f); goldLight.a *= popupAlpha;
-            Color w = Color.white; w.a *= popupAlpha;
-            DrawLabel(CRect(705, poy, 280, 110), "147", 64, gold, TextAnchor.MiddleRight);
-            DrawLabel(CRect(770, poy - 30, 420, 56), "满分进行中", 34, w, TextAnchor.MiddleLeft);
-            DrawLabel(CRect(770, poy + 28, 420, 50), "红黑连击 " + popupPairsText, 26, goldLight, TextAnchor.MiddleLeft);
+            Color gold = AccentOrange; gold.a *= popupAlpha;             // "147" 大数字（iOS 橙）
+            Color ink = Ink; ink.a *= popupAlpha;                         // 白胶囊上的墨色主行
+            Color ink2 = Ink2; ink2.a *= popupAlpha;                      // 次级行
+            DrawLabel(CRect(705, poy, 280, 110), "147", FontBanner, gold, TextAnchor.MiddleRight);
+            DrawLabel(CRect(770, poy - 30, 420, 56), "满分进行中", FontLayer, ink, TextAnchor.MiddleLeft);
+            DrawLabel(CRect(770, poy + 28, 420, 50), "红黑连击 " + popupPairsText, FontSub, ink2, TextAnchor.MiddleLeft);
         }
 
         // ---- v0.35：让对手重打 提示文字（Rule 11(b) 犯规与未击到）----
         // uGUI 底图中心锚定 y=-300 → IMGUI 设计 y = 540+300 = 840
         if (replayAlpha > 0.01f)
         {
-            Color gold = new Color(1f, 0.84f, 0.30f); gold.a *= replayAlpha;
-            Color w = Color.white; w.a *= replayAlpha;
-            Color sub = new Color(0.80f, 0.85f, 0.90f); sub.a *= replayAlpha;
-            DrawLabel(CRect(960, 792, 1100, 56), "对方犯规且未击中球（Miss）", 32, gold, TextAnchor.MiddleCenter);
-            DrawLabel(CRect(960, 836, 1100, 44), "规则允许你要求对方从当前球位重打", 24, sub, TextAnchor.MiddleCenter);
-            DrawLabel(CRect(670, 888, 520, 84), "让对手重打", 34, w, TextAnchor.MiddleCenter);
-            DrawLabel(CRect(1250, 888, 520, 84), "我自己打", 34, w, TextAnchor.MiddleCenter);
+            Color ink = Ink; ink.a *= replayAlpha;            // 白玻璃弹层上的墨色标题
+            Color ink2 = Ink2; ink2.a *= replayAlpha;
+            Color w = Color.white; w.a *= replayAlpha;        // 蓝色主按钮上的白字
+            DrawLabel(CRect(960, 792, 1100, 56), "对方犯规且未击中球（Miss）", FontMsg, ink, TextAnchor.MiddleCenter);
+            DrawLabel(CRect(960, 836, 1100, 44), "请先选择再击球 · 规则允许要求对方从当前球位重打", FontSub, ink2, TextAnchor.MiddleCenter);
+            DrawLabel(CRect(670, 888, 520, 84), "让对手重打", FontLayer, w, TextAnchor.MiddleCenter);
+            DrawLabel(CRect(1250, 888, 520, 84), "我自己打", FontLayer, ink, TextAnchor.MiddleCenter);
         }
 
         // ---- v0.35：自由球 / 指定彩球 状态提示（HUD 中央行下方）----
@@ -890,14 +1001,14 @@ public class UIManager : MonoBehaviour
         {
             if (gm.freeBallActive)
                 DrawLabel(CRect(960, 240, 900, 52), "自由球：可指定任意一颗球作为球 on",
-                    30, new Color(0.45f, 0.95f, 0.60f), TextAnchor.MiddleCenter);
+                    FontMsg, Ink, TextAnchor.MiddleCenter);
             else if (gm.freeColorPending || gm.colorsPhase)
             {
                 string nom = gm.nominatedSet
                     ? "已指定 " + G.CnName(gm.nominatedColor)
                     : "请用准线瞄准要打的彩球以指定";
-                DrawLabel(CRect(960, 240, 900, 46), nom, 24,
-                    gm.nominatedSet ? new Color(0.95f, 0.88f, 0.55f) : new Color(0.70f, 0.74f, 0.80f),
+                DrawLabel(CRect(960, 240, 900, 46), nom, FontMsg,
+                    gm.nominatedSet ? Ink : Ink2,
                     TextAnchor.MiddleCenter);
             }
         }

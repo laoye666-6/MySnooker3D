@@ -244,6 +244,11 @@ public class CueController : MonoBehaviour
     {
         var gm = GameManager.I;
         if (gm.state != GameManager.State.Aiming || striking) return;
+        if (gm.ChoicePending)                             // v0.45：选框未选择前禁止出杆（Rule 13/14(b)）
+        {
+            gm.ui.ShowMsg("请先选择是否让对手重打", 1.5f);
+            return;
+        }
         StartCoroutine(StrikeCo());
     }
 

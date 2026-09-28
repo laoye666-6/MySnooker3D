@@ -1,4 +1,4 @@
-# 双人斯诺克 3D —— 项目上下文总结（截至 v0.43，2026-09-24）
+# 双人斯诺克 3D —— 项目上下文总结（截至 v0.45，2026-09-27）
 
 > 本文件为完整压缩上下文，供导入 AI 助手继续开发使用。
 > 项目根目录：`E:\Snooker`（工作区）；Unity 工程：`E:\Snooker3D`
@@ -15,7 +15,7 @@
 贝塞尔入场运镜、设置界面（帧率/分辨率/阴影/物理步长）、单杆分 HUD、147 满分提示、加塞杆法、
 **真实袋口物理（弧形颚部 / 台呢真洞下坠 / 撞颚晃袋）**。
 
-**已开源**：https://github.com/laoye666-6/MySnooker3D （public / MIT，Release 已到 v0.43，含 APK）
+**已开源**：https://github.com/laoye666-6/MySnooker3D （public / MIT，Release 已到 v0.45，含 APK）
 **交付物**：`E:\Snooker3D\Builds\Snooker3D.apk`（v0.43，双架构 ARM64+X86_64，IL2CPP，约 70MB）
 
 ## 二、环境与路径（全部实测有效）
@@ -28,7 +28,7 @@
 | git / gh | `D:\Program Files\Git\cmd\git.exe`；`C:\Program Files\GitHub CLI\gh.exe`（已登录 laoye666-6） |
 | MuMu adb | `127.0.0.1:16384`（1600×900 横屏，Android 15） |
 | Unity 工程 | `E:\Snooker3D`（`Assets\Scripts` / `Assets\Editor` 由 sync.bat 同步） |
-| **源码母本（权威）** | `E:\Snooker\unity_src\Scripts`（11 个 cs）+ `unity_src\Editor`（4 个） |
+| **源码母本（权威）** | `E:\Snooker\unity_src\Scripts`（15 个 cs）+ `unity_src\Editor`（4 个）；另有 `shaders\LiquidGlass.shader` 与 `android\AndroidManifest.xml` 母本（sync.bat 只同步 *.cs，需手工拷入工程） |
 | Blender 脚本 | `E:\Snooker\blender\`：make_table / bake_cloth / make_icon / open_table_edit / render_pockets / shrink_pockets（废弃） |
 | 资产产物 | `E:\Snooker\assets\`（table.obj、cue.obj、cloth/wood 贴图、icon.png、preview_*.png） |
 | 开源仓库 | `E:\Snooker\MySnooker3D`（origin 已配，master；`docs\DEVELOPMENT.md` = 详细开发文档） |
@@ -60,6 +60,11 @@
 - `GameCamera.cs` — 贝塞尔弧线入场运镜 + smootherstep + 注视点平滑 + 菜单漂移 + 跟球/全景
 - `UIManager.cs` — uGUI 图形 + **IMGUI 文字层**；HUD/菜单/设置面板/147 横幅/让对手重打提示/
   自由球与指定球状态/加塞圆盘/微调按钮
+- `UIGlass.cs` — 液态玻璃图形（圆角/胶囊/圆形/描边环零贴图顶点网格，uv0=[-1,1] 供 shader 算法线）
+- `UIJelly.cs` — 按钮 Q 弹（按下压扁/松手欠阻尼弹簧过冲回弹/双轴刚度差果冻扭动）
+- `Haptics.cs` — 按钮触感（安卓 VibrationEffect，按下轻点/主按钮确认重点）
+- `GlassSceneCamera.cs` — 副相机：每帧把场景绘到半分辨率 RT（_GlassScene）供玻璃折射/光晕采样，
+  LateUpdate 隔帧 enable 折半成本
 - `GameSettings.cs` — 帧率(60/90/120/144)/分辨率(50/75/100%)/阴影/物理步长，PlayerPrefs 持久化
 
 **Editor `Editor\`（4 个）：**
@@ -274,6 +279,11 @@ WPBSA **Section 3 Rule 3(h)(i)**："the next ball on is a colour of the striker'
   新增 `PhysTest.PocketTest`
 - **v0.42** — **清彩阶段切换修正**（"played at" ≠ "potted"）+ 微调步长 0.0035→0.00035 rad
 - **v0.43** — **任选彩球按指定球计分**修正；RuleTest 44→58 断言
+- **v0.44~v0.45** — **iOS 液态玻璃 UI 全面重做**（UIGlass 零贴图顶点网格 / LiquidGlass.shader
+  清澈折射+游动光源光晕 / GlassSceneCamera 副相机确定性场景源 / UIJelly 按钮 Q 弹 / Haptics 触感 /
+  设置弹窗背景随滑入逐渐高斯模糊 / 字号 FontXxx 常量阶梯；GLES 铁律：pow() 底数 max(…,1e-4)）；
+  **v0.45 规则修复：Miss 选框未选择前禁止击球**（Rule 14(b)/13 选择权先于下一杆；
+  ChoicePending 门禁 + 选框全屏挡板）
 
 ## 十、当前功能全清单（均已验收）
 

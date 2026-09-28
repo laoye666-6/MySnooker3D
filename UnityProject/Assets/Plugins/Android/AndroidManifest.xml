@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- =====================================================================
+     AndroidManifest 母本（v0.44 起纳入版本管理）。
+     与 Unity 内置模板 (PlaybackEngines/AndroidPlayer/Apk/UnityManifest.xml) 的
+     唯一差别是新增了 android.permission.VIBRATE —— 按钮触感反馈 (Haptics.cs) 需要。
+     发版时随 UnityProject 一并同步到开源仓库。
+     ===================================================================== -->
+<manifest
+    xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools">
+    <uses-permission android:name="android.permission.VIBRATE" />
+    <application>
+        <activity android:name="com.unity3d.player.UnityPlayerActivity"
+                  android:theme="@style/UnityThemeSelector">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+            <meta-data android:name="unityplayer.UnityActivity" android:value="true" />
+        </activity>
+    </application>
+</manifest>

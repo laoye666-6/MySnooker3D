@@ -32,7 +32,8 @@ public class SpinPad : MonoBehaviour, IPointerDownHandler, IDragHandler, IPointe
 
     private RectTransform dot;          // 可拖动的小圆点
     private RectTransform ring;         // 圆盘本体（用于把屏幕坐标换算成局部坐标）
-    private Image dotImg;       // 可拖动的圆点（纯色块 Image，真机兼容性最好）
+    private UIGlass dotImg;             // 可拖动的圆点（v0.44：iOS 蓝圆形玻璃点）
+    private UIJelly dotJelly;           // 圆点的 Q 弹动画（拖住放大/松手弹回）
     private float dragging;             // >0 表示正在拖动（用于放大圆点反馈）
 
     /// 归一化击球点：spinH 右为 +，spinV 上为 +（与 CueController 的语义一致）。
@@ -49,35 +50,42 @@ public class SpinPad : MonoBehaviour, IPointerDownHandler, IDragHandler, IPointe
         radius = r;
         ring = self;
 
-        // 白球俯视图（圆盘本体）：浅色方形球面（原神风深色面板之上的浅色区域）。
-        // v0.40 结论（真机实测四轮，别再折腾）：**给这个面板加任何 sprite 都会让整块
-        // 面板在真机变成金色实心（边框盖住一切）、编辑器里却完全正常**。
-        //   试过的圆形方案全部失败：①运行时 Sprite.Create；②运行时 Texture2D+RawImage；
-        //   ③导入 PNG 资源 + Android 强制未压缩；④同样导入资源但修了层级（SetAsFirstSibling）。
-        //   四条都是"编辑器正常、真机金色板"。而**纯色块方形**在真机稳定显示，
-        //   故最终定为方形。若将来要圆，必须在真机上重新验证，不能只看编辑器。
-        var face = NewImage("SpinFace", self, Vector2.zero, Vector2.one * (r * 2f), new Color(0.90f, 0.90f, 0.86f, 0.95f));
+        // 白球俯视图（圆盘本体）：v0.44 起 = **圆形玻璃球面**（UIGlass 顶点网格）。
+        // 历史包袱说明（真机教训，改这里前必读）：v0.38~v0.40 四次尝试把方形球面画成圆
+        // 全部失败（①Sprite.Create ②Texture2D+RawImage ③导入 PNG ④导入 PNG+修层级），
+        // 症状都是"编辑器正常、真机整块异常"——那四条全是**贴图**方案。
+        // v0.44 的 UIGlass 是零贴图的顶点网格（与纯色块 Image 同一条"白纹理×顶点色"
+        // 渲染路径），理论上规避了贴图坑；**但圆面在真机上仍属首验，发版前必须 MuMu 实测**。
+        var face = NewGlass("SpinFace", self, Vector2.zero, Vector2.one * (r * 2f), new Color(0.97f, 0.98f, 1.0f, 0.46f));
+        face.shape = UIGlass.Shape.Circle;
+        face.UseRefraction(1.2f, 18f, 1.6f, 1.2f, 0.7f, 0.65f);   // 球面=清澈水玻璃透镜
         face.raycastTarget = true;                     // 自身接收点击（拖动范围 = 整个圆盘）
 
         // 十字准线：帮助判断"中杆/高杆/低杆"位置（略短于直径，端头不贴圆边）
-        NewImage("SpinLineH", self, Vector2.zero, new Vector2(r * 1.7f, 3f), new Color(0.55f, 0.57f, 0.60f, 0.5f));
-        NewImage("SpinLineV", self, Vector2.zero, new Vector2(3f, r * 1.7f), new Color(0.55f, 0.57f, 0.60f, 0.5f));
+        NewImage("SpinLineH", self, Vector2.zero, new Vector2(r * 1.7f, 3f), new Color(0.55f, 0.57f, 0.60f, 0.45f));
+        NewImage("SpinLineV", self, Vector2.zero, new Vector2(3f, r * 1.7f), new Color(0.55f, 0.57f, 0.60f, 0.45f));
 
-        // v0.39：外圈金环刻度（原神风）——12 颗小金菱绕圆盘边缘，兼作"球面范围"提示
+        // v0.44：外圈刻度（原为金菱）——12 颗小灰点绕圆盘边缘，兼作"球面范围"提示
         for (int i = 0; i < 12; i++)
         {
             float a = i * Mathf.PI * 2f / 12f;
-            var tick = NewImage("SpinTick" + i, self,
+            var tick = NewGlass("SpinTick" + i, self,
                 new Vector2(Mathf.Cos(a), Mathf.Sin(a)) * (r - 7f), Vector2.one * 7f,
-                new Color(0.80f, 0.65f, 0.30f, 0.9f));
-            tick.rectTransform.localRotation = Quaternion.Euler(0f, 0f, 45f);   // 菱形
+                new Color(0.35f, 0.38f, 0.44f, 0.40f));
+            tick.shape = UIGlass.Shape.Circle;
             tick.raycastTarget = false;
         }
 
-        // 可拖动圆点（杆头位置）：同样是圆（代表杆头打在球面上的位置）
-        dotImg = NewImage("SpinDot", self, Vector2.zero, Vector2.one * 30f, new Color(0.85f, 0.20f, 0.16f, 0.98f));
+        // 可拖动圆点（杆头位置）：iOS 蓝的圆形玻璃点（代表杆头打在球面上的位置）
+        dotImg = NewGlass("SpinDot", self, Vector2.zero, Vector2.one * 30f, new Color(0.05f, 0.47f, 1.0f, 0.96f));
+        dotImg.shape = UIGlass.Shape.Circle;
+        dotImg.UseRefraction(1f, 10f, 1.5f, 1.1f, 0.6f, 0.6f);
         dotImg.raycastTarget = false;                  // 圆点不拦截射线，交给圆盘统一处理
-        dot = dotImg.rectTransform;
+        dot = (RectTransform)dotImg.transform;
+        // 圆点 Q 弹：拖住时放大、松手带过冲弹回（由 OnPointerDown/Up 驱动 SetHeld）
+        dotJelly = dotImg.gameObject.AddComponent<UIJelly>();
+        dotJelly.pressScale = new Vector2(1.25f, 1.25f);
+        dotJelly.stiffness = 340f;
 
         SetSpin(0f, 0f);                               // 初始中杆
     }
@@ -97,12 +105,27 @@ public class SpinPad : MonoBehaviour, IPointerDownHandler, IDragHandler, IPointe
         return img;
     }
 
+    /// v0.44：居中的玻璃件（UIGlass，零贴图顶点网格；用法与 NewImage 对齐）。
+    private UIGlass NewGlass(string name, RectTransform parent, Vector2 pos, Vector2 size, Color col)
+    {
+        var go = new GameObject(name, typeof(RectTransform), typeof(CanvasRenderer), typeof(UIGlass));
+        var rt = (RectTransform)go.transform;
+        rt.SetParent(parent, false);
+        rt.anchorMin = rt.anchorMax = new Vector2(0.5f, 0.5f);
+        rt.pivot = new Vector2(0.5f, 0.5f);
+        rt.anchoredPosition = pos;
+        rt.sizeDelta = size;
+        var g = go.GetComponent<UIGlass>();
+        g.color = col;
+        return g;
+    }
+
     // ---------------------------------------------------------------------------------
     // 拖动处理：把点击位置换算到圆盘局部坐标 → 归一化到半径 → 夹进单位圆
     // ---------------------------------------------------------------------------------
-    public void OnPointerDown(PointerEventData e) { dragging = 1f; Apply(e); }
+    public void OnPointerDown(PointerEventData e) { dragging = 1f; if (dotJelly != null) dotJelly.SetHeld(true); Apply(e); }
     public void OnDrag(PointerEventData e) { dragging = 1f; Apply(e); }
-    public void OnPointerUp(PointerEventData e) { dragging = 0f; }
+    public void OnPointerUp(PointerEventData e) { dragging = 0f; if (dotJelly != null) dotJelly.SetHeld(false); }
 
     void Apply(PointerEventData e)
     {
