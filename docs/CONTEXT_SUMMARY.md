@@ -1,4 +1,4 @@
-# 双人斯诺克 3D —— 项目上下文总结（截至 v0.48，2026-10-02）
+# 双人斯诺克 3D —— 项目上下文总结（截至 v0.49，2026-10-02）
 
 > 本文件为完整压缩上下文，供导入 AI 助手继续开发使用。
 > 项目根目录：`E:\Snooker`（工作区）；Unity 工程：`E:\Snooker3D`
@@ -16,7 +16,7 @@
 **真实袋口物理（弧形颚部 / 台呢真洞下坠 / 撞颚晃袋）**。
 
 **已开源**：https://github.com/laoye666-6/MySnooker3D （public / MIT，Release 已到 v0.45，含 APK）
-**交付物**：`E:\Snooker3D\Builds\Snooker3D.apk`（v0.48，双架构 ARM64+X86_64，IL2CPP，约 70MB）
+**交付物**：`E:\Snooker3D\Builds\Snooker3D.apk`（v0.49，双架构 ARM64+X86_64，IL2CPP，约 70MB）
 
 ## 二、环境与路径（全部实测有效）
 
@@ -29,10 +29,10 @@
 | MuMu adb | `127.0.0.1:16384`（1600×900 横屏，Android 15） |
 | Unity 工程 | `E:\Snooker3D`（`Assets\Scripts` / `Assets\Editor` 由 sync.bat 同步） |
 | **源码母本（权威）** | `E:\Snooker\unity_src\Scripts`（16 个 cs）+ `unity_src\Editor`（4 个）；另有 `shaders\LiquidGlass.shader`、`shaders\GlassBlur.shader` 与 `android\AndroidManifest.xml` 母本（sync.bat 只同步 *.cs，需手工拷入工程） |
-| Blender 脚本 | `E:\Snooker\blender\`：make_table / bake_cloth / make_icon / open_table_edit / render_pockets / shrink_pockets（废弃） |
+| Blender 脚本 | `E:\Snooker\blender\`：make_table / bake_cloth / make_icon / open_table_edit / render_pockets / shrink_pockets（废弃）+ **pool_hall.blend / pool_hall_README.md（台球厅场景，v0.49）** |
 | 资产产物 | `E:\Snooker\assets\`（table.obj、cue.obj、cloth/wood 贴图、icon.png、preview_*.png、audio\sfx_*.wav 音效 9 个） |
 | 开源仓库 | `E:\Snooker\MySnooker3D`（origin 已配，master；`docs\DEVELOPMENT.md` = 详细开发文档） |
-| 辅助脚本 | `E:\Snooker\tools\`：sync.bat / m.bat / regress.sh / make_audio.py（音效合成）+ 4 个编辑器 GUI 自动化 ps1 |
+| 辅助脚本 | `E:\Snooker\tools\`：sync.bat / m.bat / regress.sh / make_audio.py（音效合成）/ fetch_hall_assets.py（台球厅 CC0 资源下载）+ 4 个编辑器 GUI 自动化 ps1 |
 | 截图/日志 | `E:\Snooker\shots\`（编辑器截图在 `shots\editor\`）、`E:\Snooker\logs\` |
 | 文档 | `E:\Snooker\README.md`（踩坑 38 条 + 版本史）、本文件、`DSH_IMPORT_PROMPT.txt` |
 
@@ -125,7 +125,18 @@ python E:\Snooker\tools\make_audio.py
 连接被拒时先 `MuMuManager.exe control -v 0 launch` 重启（约 55 秒）。
 IL2CPP 全量构建 40~60 分钟；**纯 C# / 纯资产改动走增量约 3~7 分钟**。
 
-## 五、本轮（v0.41~v0.47）改动
+## 五、本轮（v0.41~v0.49）改动
+
+### v0.49 —— 台球厅场景（Blender 资产轮，2026-10-02）
+
+- `blender\pool_hall.blend`（贴图已打包自包含）+ `assets\hall\pool_hall.glb`（29MB/186 节点）：
+  三桌台球厅环境（21×10m 房间/暗绿墙+墙裙/旧木地板），每桌低垂长条吊灯（0.85m/300W 暖光）、
+  球杆架/记分牌/挂钟/海报/绿椅×4/扶手椅/盆栽×4，**无人物**；台呢 z=0 与游戏物理一致。
+- 免费资源 Poly Haven CC0（`tools\fetch_hall_assets.py` 直连 API 下载）；其余程序化建模。
+- Blender MCP 全程驱动（插件已升级协议 13）；坑：中文 UI 节点名本地化（用 socket identifier）、
+  OBJ 导入器自动转 Z-up、glTF 导出器静默跳过导入网格（JOIN 进程序化网格解决，
+  导出前解析 GLB JSON 验证节点）。
+- **未集成进 Unity**（下一轮：Bootstrapper 加载 GLB + 灯光布点 + 贴图降级）；APK 仅版本号递增。
 
 - **接线**：`Sfx.Init(transform)` 在 Bootstrapper.Init 的 ui.Build() 之后；AudioListener
   本来就挂在主相机（v0.28 起）。编辑器离线测试不 Init（I==null 静默）、手动步进不派发

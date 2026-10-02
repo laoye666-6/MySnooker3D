@@ -5,7 +5,7 @@
 彩球回点、清彩、只剩黑球终局、指定彩球、犯规与未击到 Miss、自由球），辅助瞄准线可随时开关，
 另带入场运镜、设置界面、单杆分 HUD 与 147 满分提示。
 
-**已开源**：https://github.com/laoye666-6/MySnooker3D （public / MIT，Latest Release v0.48 附 APK 直链）
+**已开源**：https://github.com/laoye666-6/MySnooker3D （public / MIT，Latest Release v0.49 附 APK 直链）
 
 ## 目录结构
 
@@ -404,6 +404,22 @@ python E:\Snooker\tools\make_audio.py
 **尚未集成进 Unity 工程**（下一轮：Bootstrapper 加载 GLB + 游戏内灯光布点 + 移动端贴图降级）。
 
 ## 版本记录
+
+### v0.49（第 49 次迭代）—— 台球厅场景（Blender 资产轮）
+
+- **blender\pool_hall.blend + assets\hall\pool_hall.glb**（29MB，186 节点）：围绕游戏球桌的
+  完整台球厅环境 —— 21×10m 房间（旧木地板/暗绿墙+墙裙）、三张球桌、每桌低垂长条吊灯
+  （真实球房 32~36″ 标准，300W 暖色面光）、球杆架/斯诺克记分牌/挂钟/海报/沿墙座椅/四角盆栽，
+  **无人物**。
+- **免费资源全部 Poly Haven CC0**：旧木地板/灰泥墙贴图 2k、游戏厅 HDRI、绿椅/扶手椅/灌木
+  模型（下载脚本 `tools\fetch_hall_assets.py` 直连 API）；其余程序化建模（MIT）。
+  出处与 Unity 集成注意见 `blender\pool_hall_README.md`。
+- **制作过程（Blender MCP 全程驱动）**：升级 MCP 插件至协议 13；中文 UI 下材质脚本改用
+  socket identifier；OBJ 导入器已自动转 Z-up（再转 90° 会立起球桌）；glTF 导出器会静默
+  跳过导入模型网格 —— 用「JOIN 进程序化网格」解决，导出前解析 GLB JSON 验证节点齐全。
+- **本轮为 Blender 资产轮**：游戏 C# 零改动，APK 仅版本号递增（0.49/versionCode 49）。
+  预览：`shots\hall_main_v4.png` / `shots\hall_wide_v5.png`。
+- **下一轮**：GLB 集成进 Unity（Bootstrapper 加载环境 + 游戏内灯光布点 + 移动端贴图降级）。
 
 ### v0.48（第 48 次迭代）—— HUD 顶条圆角 + 击球点文字改黑
 
