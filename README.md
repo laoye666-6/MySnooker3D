@@ -17,7 +17,9 @@ E:\Snooker\
 │  ├─ make_icon.py              # 渲染应用图标 icon.png（512²）
 │  ├─ open_table_edit.py        # GUI 调试用：打开球桌+布纹材质、取景出图，存 table_edit.blend
 │  ├─ render_pockets.py         # 袋口特写离线渲染（3 张），改袋口外观后校验用
-│  └─ shrink_pockets.py         # 【已废弃】早期按 scale 缩袋口黑柱；v0.29 起改由 make_table.py 参数控制
+│  ├─ shrink_pockets.py         # 【已废弃】早期按 scale 缩袋口黑柱；v0.29 起改由 make_table.py 参数控制
+│  ├─ pool_hall.blend           # 台球厅环境场景（贴图已打包自包含；见 pool_hall_README.md）
+│  └─ pool_hall_README.md       # 场景构成 / 资源授权（Poly Haven CC0）/ Unity 集成注意
 ├─ shaders\                     # LiquidGlass.shader + GlassBlur.shader 母本
 │                               #（sync.bat 只同步 *.cs，需手工拷入工程）
 ├─ android\                     # AndroidManifest.xml 母本（含 VIBRATE 权限，同上手工拷入）
@@ -391,6 +393,15 @@ python E:\Snooker\tools\make_audio.py
 - APK 约 70MB，其中约 48MiB 是两个**未被引用**的备用中文字体常驻包内（移出 `Resources\` 即可瘦身）
 - 仓库可做：GitHub Actions 自动构建、Topics 标签、英文 README
 - GitHub Release：v0.45（Latest，含 APK）、v0.43、v0.42、v0.41、v0.40、v0.36、v0.35、v0.33
+
+## 台球厅场景（Blender，待集成）
+
+`blender\pool_hall.blend` + `assets\hall\pool_hall.glb`（29MB，186 节点）：围绕游戏球桌构建的
+完整台球厅环境 —— 21×10m 房间（旧木地板/暗绿墙+墙裙）、三张球桌、每桌低垂长条吊灯
+（真实球房 32~36″ 标准）、球杆架/记分牌/挂钟/海报/沿墙座椅/盆栽，**无人物**。
+免费资源全部 Poly Haven CC0（下载脚本 `tools\fetch_hall_assets.py`），出处与 Unity 集成注意
+见 `blender\pool_hall_README.md`。预览：`shots\hall_main_v4.png` / `shots\hall_wide_v5.png`。
+**尚未集成进 Unity 工程**（下一轮：Bootstrapper 加载 GLB + 游戏内灯光布点 + 移动端贴图降级）。
 
 ## 版本记录
 
