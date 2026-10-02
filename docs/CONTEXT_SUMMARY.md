@@ -1,4 +1,4 @@
-# 双人斯诺克 3D —— 项目上下文总结（截至 v0.49，2026-10-02）
+# 双人斯诺克 3D —— 项目上下文总结（截至 v0.50，2026-10-02）
 
 > 本文件为完整压缩上下文，供导入 AI 助手继续开发使用。
 > 项目根目录：`E:\Snooker`（工作区）；Unity 工程：`E:\Snooker3D`
@@ -16,7 +16,7 @@
 **真实袋口物理（弧形颚部 / 台呢真洞下坠 / 撞颚晃袋）**。
 
 **已开源**：https://github.com/laoye666-6/MySnooker3D （public / MIT，Release 已到 v0.45，含 APK）
-**交付物**：`E:\Snooker3D\Builds\Snooker3D.apk`（v0.49，双架构 ARM64+X86_64，IL2CPP，约 70MB）
+**交付物**：`E:\Snooker3D\Builds\Snooker3D.apk`（v0.50，双架构 ARM64+X86_64，IL2CPP，约 70MB）
 
 ## 二、环境与路径（全部实测有效）
 
@@ -125,7 +125,23 @@ python E:\Snooker\tools\make_audio.py
 连接被拒时先 `MuMuManager.exe control -v 0 launch` 重启（约 55 秒）。
 IL2CPP 全量构建 40~60 分钟；**纯 C# / 纯资产改动走增量约 3~7 分钟**。
 
-## 五、本轮（v0.41~v0.49）改动
+## 五、本轮（v0.41~v0.50）改动
+
+### v0.50 —— 台球厅集成进游戏（2026-10-02）
+
+- 修复 v0.49"安装后场景没变"：GLB 需 Unity 插件 → 改导 **FBX 内嵌贴图**（无头
+  `blender -b pool_hall.blend --python-expr`）；场景模型**剔除主桌**（与 table.obj
+  重合会 z-fight），只含房间 + 两侧背景桌 → `Resources/Models/pool_hall.fbx`。
+- **Bootstrapper**：`Resources.Load("Models/pool_hall")` 实例化（缺失告警回退）；垫底
+  地板 -0.72→-0.9 防共面闪烁；**室内光照**（主光 0.45/补光 0.15/环境压暗 + 每桌吊灯位
+  暖色点光 1.4/range6.5，y=0.80）；**GameCamera 入场弧线压到 2.45~2.55m**（旧 4.7m 会
+  穿天花板，y=2.68）。
+- **踩坑 44**：构建连续卡死 "Detecting Android SDK"（CPU 零）= 残留 adb.exe（MuMu 的）/
+  java.exe 挡住 SDK 探测子进程 → 杀光 adb/java + 删 Temp 再构建。另：**代理断续时
+  Unity 的 SDK "Fetch remote repository" 会死等/失败**（66% Fetch 卡住）——构建需代理在线。
+- **FBX 内嵌贴图真机未生效**（踩坑 7 的 FBX 版）→ 按材质名重建 Standard 材质
+  （Blender 材质名 + GLTF 材质名共 23 个映射表）+ diffuse 贴图入 `Resources/Textures/hall/`，
+  logcat `remapped renderers=99` 确认；灯罩上移 0.30（Shade_* 物体，吊杆穿罩内不受影响）。
 
 ### v0.49 —— 台球厅场景（Blender 资产轮，2026-10-02）
 

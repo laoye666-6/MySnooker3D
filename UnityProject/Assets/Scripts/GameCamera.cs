@@ -20,11 +20,13 @@ public class GameCamera : MonoBehaviour
     private Vector3 lookAt;           // 当前注视点（始终做时间平滑，避免视线突跳）
 
     // ---- 入场动画参数 ----
+    // v0.50：起点/控制点高度压到 2.45~2.55m —— 台球厅有天花板（y=2.68），旧值 4.7m
+    // 会让入场弧线从厅顶上方俯冲、穿越天花板（背面剔除导致穿帮闪烁）。
     private float introT;                                   // 入场动画已播秒数
     private const float IntroDur = 3.6f;                    // 稍放慢一点，运镜更从容
-    private static readonly Vector3 IntroFrom = new Vector3(2.6f, 4.7f, 2.4f);    // 起点：黑球端高空
-    private static readonly Vector3 IntroC1 = new Vector3(3.1f, 3.3f, 0.1f);      // 贝塞尔控制点1：绕 +X 端
-    private static readonly Vector3 IntroC2 = new Vector3(2.3f, 2.5f, -2.6f);     // 贝塞尔控制点2：转入 -Z 库边
+    private static readonly Vector3 IntroFrom = new Vector3(2.6f, 2.55f, 2.4f);   // 起点：黑球端高位（厅内）
+    private static readonly Vector3 IntroC1 = new Vector3(3.1f, 2.6f, 0.1f);      // 贝塞尔控制点1：绕 +X 端
+    private static readonly Vector3 IntroC2 = new Vector3(2.3f, 2.45f, -2.6f);    // 贝塞尔控制点2：转入 -Z 库边
     private static readonly Vector3 IntroLookFrom = new Vector3(0.7f, 0f, 0f);
     private static readonly Vector3 DemoPos = new Vector3(-0.9f, 2.3f, -2.2f);    // 菜单演示机位
     private static readonly Vector3 DemoLook = new Vector3(0.2f, 0f, 0.1f);

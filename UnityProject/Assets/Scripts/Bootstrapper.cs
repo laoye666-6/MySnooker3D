@@ -65,6 +65,97 @@ public class Bootstrapper : MonoBehaviour
         var mats = Materials();
 
         // -----------------------------------------------------------------
+        // 一b、台球厅环境（v0.50，Blender 建模 pool_hall.fbx，内嵌贴图）
+        // 主桌已从场景模型中剔除（与 table.obj 几何重合会 z-fight），
+        // 场景只含房间 + 东西两侧背景桌；台呢高度与游戏物理坐标一致（y=0）。
+        // -----------------------------------------------------------------
+        bool hasHall = false;
+        var hallPrefab = Resources.Load<GameObject>("Models/pool_hall");
+        if (hallPrefab != null)
+        {
+            var hall = Instantiate(hallPrefab);
+            hall.name = "PoolHall";
+            hasHall = true;
+
+            // v0.50：FBX 内嵌贴图在真机上没有生效（地板/墙显示纯色——踩坑 7 的 FBX 版），
+            // 与 table.obj 同一处理思路：按材质名重建 Standard 材质并接 diffuse 贴图。
+            var hallMats = new System.Collections.Generic.Dictionary<string, Material>();
+            void HallMat(string matName, string texPath, Color tint, float rough)
+            {
+                var m = NewMat("Hall_" + matName, tint, rough, 0f);
+                if (texPath != null)
+                {
+                    var t = Resources.Load<Texture2D>(texPath);
+                    if (t != null) m.mainTexture = t;
+                }
+                hallMats[matName] = m;
+            }
+            HallMat("MAT_FloorWood", "Textures/hall/floor_diff", new Color(0.82f, 0.70f, 0.58f), 0.85f);
+            HallMat("MAT_WallGreen", "Textures/hall/wall_diff", new Color(0.32f, 0.55f, 0.36f), 0.9f);
+            HallMat("MAT_Wainscot", null, new Color(0.07f, 0.04f, 0.025f), 0.45f);
+            HallMat("MAT_CeilingDark", null, new Color(0.045f, 0.05f, 0.055f), 0.9f);
+            HallMat("MAT_ShadeGreen", null, new Color(0.030f, 0.085f, 0.048f), 0.35f);
+            HallMat("MAT_ShadeInner", null, new Color(0.95f, 0.93f, 0.85f), 0.6f);
+            HallMat("MAT_LampPanel", null, new Color(1f, 0.92f, 0.78f), 0.4f);
+            HallMat("MAT_LampRod", null, new Color(0.04f, 0.04f, 0.045f), 0.4f);
+            HallMat("MAT_Downlight", null, new Color(1f, 0.92f, 0.78f), 0.4f);
+            HallMat("MAT_DarkWood", null, new Color(0.09f, 0.05f, 0.03f), 0.4f);
+            HallMat("MAT_CueWood", null, new Color(0.55f, 0.36f, 0.19f), 0.35f);
+            HallMat("MAT_CueTip", null, new Color(0.15f, 0.10f, 0.07f), 0.6f);
+            HallMat("MAT_PotClay", null, new Color(0.28f, 0.12f, 0.08f), 0.8f);
+            HallMat("MAT_Soil", null, new Color(0.06f, 0.045f, 0.035f), 0.95f);
+            HallMat("MAT_GoldTrim", null, new Color(0.65f, 0.50f, 0.20f), 0.35f);
+            HallMat("MAT_ClockFace", null, new Color(0.90f, 0.89f, 0.85f), 0.5f);
+            HallMat("MAT_BlackPanel", null, new Color(0.02f, 0.02f, 0.02f), 0.5f);
+            HallMat("MAT_PosterFelt", null, new Color(0.04f, 0.12f, 0.06f), 0.9f);
+            HallMat("MAT_RedBall", null, new Color(0.45f, 0.03f, 0.02f), 0.25f);
+            HallMat("GreenChair_01", "Textures/hall/chair_diff", Color.white, 0.8f);
+            HallMat("Armchair_01", "Textures/hall/armchair_diff", Color.white, 0.8f);
+            HallMat("anthurium_botany_01", "Textures/hall/plant_a_diff", Color.white, 0.8f);
+            HallMat("calathea_orbifolia_01", "Textures/hall/plant_c_diff", Color.white, 0.8f);
+            int remapped = 0;
+            foreach (var r in hall.GetComponentsInChildren<MeshRenderer>())
+            {
+                var sms = r.sharedMaterials;
+                bool changed = false;
+                for (int i = 0; i < sms.Length; i++)
+                {
+                    string n = sms[i] != null ? sms[i].name : "";
+                    if (n.Length > 0 && hallMats.TryGetValue(n, out var rm)) { sms[i] = rm; changed = true; }
+                }
+                if (changed) { r.sharedMaterials = sms; remapped++; }
+            }
+
+            // 灯罩整体上移 0.30：跟球机位（高 1.18m 俯视）会扫到 y0.85 的灯罩暗面，
+            // 提到 1.15 贴近真实球房视线；吊杆穿进罩内、天花吸盘不动，视觉不受影响。
+            foreach (var t in hall.GetComponentsInChildren<Transform>())
+            {
+                if (t.name.StartsWith("Shade_Out") || t.name.StartsWith("Shade_In") || t.name.StartsWith("Shade_Panel"))
+                    t.localPosition += new Vector3(0f, 0.30f, 0f);
+            }
+
+            // 室内光照（v0.50）：阳光透不进天花板 → 主光/补光调弱、环境光压暗，
+            // 改由每桌吊灯位置的一盏暖色点光承担照明（与 Blender 预览一致的光位）。
+            var sunT = GameObject.Find("SunLight");
+            if (sunT != null) sunT.GetComponent<Light>().intensity = 0.45f;
+            var fillT = GameObject.Find("FillLight");
+            if (fillT != null) fillT.GetComponent<Light>().intensity = 0.15f;
+            RenderSettings.ambientLight = new Color(0.24f, 0.26f, 0.30f);
+            foreach (float lx in new[] { -7.2f, 0f, 7.2f })
+            {
+                var lp = new GameObject("HallLampLight");
+                lp.transform.position = new Vector3(lx, 0.80f, 0f);
+                var l = lp.AddComponent<Light>();
+                l.type = LightType.Point;
+                l.color = new Color(1f, 0.85f, 0.66f);   // 暖钨丝色
+                l.intensity = 1.4f;
+                l.range = 6.5f;
+            }
+            Debug.Log("[SNOOKER] pool hall loaded (indoor lighting, remapped renderers=" + remapped + ")");
+        }
+        else Debug.LogWarning("[SNOOKER] pool_hall.fbx not found in Resources/Models (fallback: empty hall)");
+
+        // -----------------------------------------------------------------
         // 二、球桌视觉模型（Blender 导出的 OBJ，放 Resources/Models 下）
         // -----------------------------------------------------------------
         var tablePrefab = Resources.Load<GameObject>("Models/table");
@@ -109,12 +200,14 @@ public class Bootstrapper : MonoBehaviour
         else Debug.LogError("[SNOOKER] table.obj not found in Resources/Models");
 
         // -----------------------------------------------------------------
-        // 三、地板（桌面底下的深色地毯，承接出界球；出界球会滚落其上）
+        // 三、地板（台球厅地板之下的一块兜底平面，承接出界球；出界球会滚落其上）
+        // v0.50：有台球厅场景时下移 0.18m —— 厅模型自带地板且同为 y=-0.72，
+        // 共面会 z-fight（闪烁），垫底面只负责"厅外"与兜底，放到更深处即可。
         // -----------------------------------------------------------------
         var floor = GameObject.CreatePrimitive(PrimitiveType.Plane);
         floor.name = "Floor";
         floor.transform.localScale = new Vector3(9f, 1f, 7f);      // Plane 原始 10m，缩放后 90×70m
-        floor.transform.position = new Vector3(0f, -0.72f, 0f);    // 桌腿底端所在高度
+        floor.transform.position = new Vector3(0f, hasHall ? -0.9f : -0.72f, 0f);
         floor.GetComponent<Renderer>().sharedMaterial = NewMat("Floor", new Color(0.13f, 0.10f, 0.08f), 1f, 0f);
 
         // -----------------------------------------------------------------

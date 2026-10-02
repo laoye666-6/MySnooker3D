@@ -7,7 +7,7 @@
   贝塞尔入场运镜、设置界面（帧率/分辨率/阴影/物理步长）、单杆分 HUD、147 提示、加塞杆法、
   **iOS 液态玻璃 UI（清澈折射/反射/游动光源光晕/按钮 Q 弹/触感反馈）**
 ■ 技术栈：Unity 2022.3.62f3c1（IL2CPP，ARM64+X86_64）+ Blender 5.2 脚本化建模 + MuMu 模拟器实测
-■ 当前版本：v0.49（第 49 次迭代）；APK：E:\Snooker3D\Builds\Snooker3D.apk
+■ 当前版本：v0.50（第 50 次迭代）；APK：E:\Snooker3D\Builds\Snooker3D.apk
 ■ 已开源：https://github.com/laoye666-6/MySnooker3D （public / MIT，Release v0.45 已带 APK）
 
 ■ 路径（全部实测有效）

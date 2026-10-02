@@ -361,6 +361,11 @@ python E:\Snooker\tools\make_audio.py
     UIJelly/材质参数三组对照实验逐一排除，无日志无异常。**结论：MuMu 的 GL 翻译层
     不可作为玻璃 UI 的验收环境**——玻璃验收 = 编辑器截图（ShotTest）+ 真机；
     定位手段：shader 临时直接输出顶点色（踩坑 39 方法），验完立即还原。
+44. **构建卡死在 "Detecting Android SDK" = 残留 adb.exe/java.exe 挡路**（v0.50）：
+    连续三次构建在该行停止推进（CPU 零、日志冻结数十分钟）。根因：MuMu 的 adb server
+    与构建期间残留的 java（Gradle daemon）让 Unity 的 SDK 探测子进程死等。
+    **处置：杀光 `adb.exe`/`java.exe` + 删 `Temp/` 再构建**（仅删 UnityLockfile 不够）；
+    恢复后 IL2CPP 全量约 40~60 分钟。
 
 ## 已验证（MuMu 实测）
 
@@ -404,6 +409,27 @@ python E:\Snooker\tools\make_audio.py
 **尚未集成进 Unity 工程**（下一轮：Bootstrapper 加载 GLB + 游戏内灯光布点 + 移动端贴图降级）。
 
 ## 版本记录
+
+### v0.50（第 50 次迭代）—— 台球厅集成进游戏
+
+修复 v0.49 的"安装后场景没变"：台球厅此前只存在于 Blender，未接入 Unity。
+
+- **资产路线**：GLB 需要 Unity 插件才能读 → 改导 **FBX（内嵌贴图，Unity 原生支持）**
+  （`blender -b pool_hall.blend --python-expr` 无头导出）。场景模型**剔除主桌**——它与
+  游戏 table.obj 几何完全重合，同位置渲染会 z-fight；主桌仍由 table.obj 提供。
+- **Bootstrapper 集成**：`Resources.Load("Models/pool_hall")` 实例化（缺失则告警回退空厅）；
+  垫底地板下移至 -0.9（厅模型自带地板同为 -0.72，共面闪烁）；**室内光照**——主光
+  1.05→0.45、补光→0.15、环境光压暗，每桌吊灯位（±7.2/0, y=0.80）加 300W 级暖色点光
+  （range 6.5），与 Blender 预览同光位；液态玻璃折射源照常采样新场景。
+- **GameCamera**：入场弧线从 4.7m 高空压到 2.45~2.55m——台球厅有天花板（y=2.68），
+  旧弧线会穿越天花板（背面剔除闪烁）。
+- **构建环境踩坑 44（本轮真凶）**：连续三次构建卡死在 "Detecting Android SDK"（CPU 零、
+  日志不动）。根因是**残留的 adb.exe（MuMu 的）与 java.exe 挡住 Unity 的 SDK 探测子进程**
+  ——杀光 adb/java 并清 Temp 后立刻恢复。处置：构建前 `taskkill adb.exe/java.exe`。
+- 回归：规则 58/58。**MuMu 实测**：台球厅完整入景（背景桌/扶手椅/盆栽/暖色地板可见），
+  灯罩不再挡视线，材质重映射 99 个渲染器生效（logcat `remapped renderers=99`），
+  开球/音效/结算零回归（`shots\v050_menu2.png` / `v050_game2.png` / `v050_shot.png`）。
+  FBX 内嵌贴图在真机未生效 → 材质按名重建 + diffuse 贴图入 `Resources/Textures/hall/`。
 
 ### v0.49（第 49 次迭代）—— 台球厅场景（Blender 资产轮）
 
