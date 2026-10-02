@@ -1,8 +1,9 @@
 // =====================================================================================
-// GlassSceneCamera.cs —— 液态玻璃折射/反射的确定性场景源（v0.44f）
+// GlassSceneCamera.cs —— 液态玻璃折射/磨砂的确定性场景源（v0.47）
 //
-// 挂在主相机上。创建一个跟随主相机的子相机，每帧把场景渲染到【半分辨率】RT，
-// 经 SetGlobalTexture("_GlassScene") 交给 LiquidGlass.shader 做实时折射/反射。
+// 挂在主相机上。创建一个跟随主相机的子相机，每帧(隔帧)把场景渲染到【半分辨率】RT：
+//   _GlassScene —— 原始半分辨率场景（清晰折射层）
+//   _GlassBlur  —— 四分之一分辨率 + 两轮分离高斯（磨砂主体，LiquidGlass 采样）
 //
 // 为什么用副相机（三次真机翻车的教训，动这里前必读）：
 //   1) GrabPass：MuMu GLES3 抓到黑帧；
@@ -11,6 +12,8 @@
 //   三者共同点：都依赖"从帧缓冲拷贝"的时机/语义，在 GLES 驱动上不可控。
 //   副相机是多相机渲染（小地图/镜面/传送门的标配），走完全常规的渲染路径，
 //   结果确定性 100%；代价是场景每帧重绘一遍，用半分辨率 RT 摊薄成本。
+//   v0.47 的磨砂链用 RT→RT 的 Graphics.Blit（常规路径，非帧缓冲拷贝），
+//   在相机渲染完成后的下一帧做（磨砂源 30Hz + 1 帧延迟，肉眼不可辨）。
 //
 // 注意：UI 画布是 ScreenSpaceOverlay，不归相机渲染 → RT 里天然没有 UI，不会递归。
 // =====================================================================================
@@ -20,7 +23,9 @@ using UnityEngine;
 public class GlassSceneCamera : MonoBehaviour
 {
     private Camera glassCam;
-    private RenderTexture rt;
+    private RenderTexture rt;                 // 半分辨率原始场景
+    private RenderTexture qa, qb;             // 四分辨率模糊交换链
+    private Material blurMat;
 
     private int frameTick;
 
@@ -28,7 +33,10 @@ public class GlassSceneCamera : MonoBehaviour
     {
         // 隔帧渲染：折射源 30Hz 更新肉眼不可辨，场景重绘成本直接减半
         frameTick++;
-        glassCam.enabled = (frameTick % 2 == 0);
+        bool render = (frameTick % 2 == 0);
+        glassCam.enabled = render;
+        // 相机关闭的那一帧，对【上一帧】的场景 RT 做磨砂模糊（RT→RT Blit，确定性路径）
+        if (!render && rt != null) BlurChain();
     }
 
     void Start()
@@ -46,6 +54,11 @@ public class GlassSceneCamera : MonoBehaviour
         glassCam.allowMSAA = false;
         glassCam.useOcclusionCulling = false;
         glassCam.enabled = true;
+
+        var bs = Resources.Load<Shader>("Shaders/GlassBlur");
+        if (bs != null) blurMat = new Material(bs);
+        else Debug.LogWarning("[GLASS] GlassBlur shader 缺失，磨砂层退化为半分辨率原图");
+        MakeBlurRT();
     }
 
     private RenderTexture MakeRT()
@@ -56,5 +69,37 @@ public class GlassSceneCamera : MonoBehaviour
         Shader.SetGlobalTexture("_GlassScene", rt);
         Shader.SetGlobalVector("_GlassScene_TexelSize", new Vector4(w, h, 1f / w, 1f / h));
         return rt;
+    }
+
+    /// 四分辨率磨砂 RT（兜底：创建失败时 _GlassBlur 指向原始 RT，只是磨砂弱一些）
+    private void MakeBlurRT()
+    {
+        int w = Mathf.Max(2, Screen.width / 4);
+        int h = Mathf.Max(2, Screen.height / 4);
+        qa = new RenderTexture(w, h, 0, RenderTextureFormat.ARGB32) { name = "GlassBlurA" };
+        qb = new RenderTexture(w, h, 0, RenderTextureFormat.ARGB32) { name = "GlassBlurB" };
+        PublishBlur(qb);
+    }
+
+    /// 对上一帧的半分辨率 RT 做两轮分离高斯（降采样在第一次 Blit 顺带完成）
+    private void BlurChain()
+    {
+        if (blurMat == null || qa == null) { PublishBlur(rt); return; }
+        blurMat.SetVector("_Dir", new Vector4(1f, 0f, 0f, 0f));
+        Graphics.Blit(rt, qa, blurMat);                // 降采样 + 水平
+        blurMat.SetVector("_Dir", new Vector4(0f, 1f, 0f, 0f));
+        Graphics.Blit(qa, qb, blurMat);                // 垂直
+        blurMat.SetVector("_Dir", new Vector4(1f, 0f, 0f, 0f));
+        Graphics.Blit(qb, qa, blurMat);                // 第二轮加宽磨砂半径
+        blurMat.SetVector("_Dir", new Vector4(0f, 1f, 0f, 0f));
+        Graphics.Blit(qa, qb, blurMat);
+        PublishBlur(qb);
+    }
+
+    private static void PublishBlur(Texture t)
+    {
+        Shader.SetGlobalTexture("_GlassBlur", t);
+        Shader.SetGlobalVector("_GlassBlur_TexelSize",
+            new Vector4(t.width, t.height, 1f / t.width, 1f / t.height));
     }
 }

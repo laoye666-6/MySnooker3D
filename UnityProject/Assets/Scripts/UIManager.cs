@@ -14,7 +14,8 @@
 //   - 中央提示配玻璃胶囊底（iOS 通知条），文字仍走 IMGUI；
 //   - 按钮触感反馈见 Haptics.cs（按下轻点、主按钮确认重点）。
 //
-// 设置面板：帧率上限（60/90/120/144）/ 渲染分辨率（50%/75%/100%）/ 画面阴影（开/关），
+// 设置面板：帧率上限（60/90/120/144）/ 渲染分辨率（50%/75%/100%）/ 画面阴影（开/关）/
+//           物理步长（0.5/1/2ms）/ 音效开/关（v0.46），
 //           改动即通过 GameSettings.Apply() 生效并持久化（PlayerPrefs）。
 // =====================================================================================
 using System.Collections.Generic;
@@ -142,8 +143,9 @@ public class UIManager : MonoBehaviour
         //        （分辨率档位只等比改变像素密度、宽高比不变，所以此处算一次即可。）
         Rect vis = VisibleDesignRect();
         float topW = Mathf.Min(1920f, vis.width);              // 顶条宽度自适应可见宽度
+        // v0.48：顶条由直角改圆角（28 与加塞盘面板一致），玻璃边缘沿圆角走更贴合 iOS 语言
         var topGlass = UIGlass.Add(cgo.transform, "TopPanel", new Vector2(0.5f, 0.5f),
-            Fit(new Vector2(0, 485), new Vector2(topW, 96)), new Vector2(topW, 96), GlassWhite, 0f);
+            Fit(new Vector2(0, 485), new Vector2(topW, 96)), new Vector2(topW, 96), GlassWhite, 28f);
         topGlass.UseRefraction(1.5f, 12f, 1.1f, 0.9f, 0.6f, 0.55f);   // 顶条：实时折射+轻高光
         var chipP1 = UIGlass.Add(cgo.transform, "ChipP1", new Vector2(0.5f, 0.5f),
             Fit(new Vector2(-916, 492), new Vector2(28, 28)), new Vector2(28, 28), ChipBlue, 0f);
@@ -207,6 +209,7 @@ public class UIManager : MonoBehaviour
         padRim.raycastTarget = false;
         padPanel.UseRefraction(1.5f, 14f, 1.3f, 0.9f, 0.6f, 0.5f);
         padPanel.raycastTarget = false;
+        padPanel.AttachShadow(12f, -6f, 0.20f, 16f);        // v0.47：加塞圆盘面板软投影
         var padGo = new GameObject("SpinPad", typeof(RectTransform), typeof(CanvasRenderer), typeof(Image), typeof(SpinPad));
         var padRt = (RectTransform)padGo.transform;
         padRt.SetParent(padPanel.transform, false);
@@ -251,6 +254,7 @@ public class UIManager : MonoBehaviour
         // 力度百分比文字的胶囊底（常显：随 HUD 整体 CanvasGroup 一起淡出，无需单独驱动）
         var powerPillCG = MakePill("PowerPill", cgo.transform, new Vector2(600, -382), new Vector2(310, 46), GlassStrong);
         powerPillCG.alpha = 1f;
+        powerPillCG.GetComponent<UIGlass>().AttachShadow(10f, -5f, 0.18f, 14f);   // v0.47：常显胶囊投影
 
         Btn("AimMenuBtn", menu.transform, new Vector2(0.5f, 0.5f), new Vector2(0, -40), new Vector2(400, 84),
             GlassNeutral, ToggleAim);
@@ -294,33 +298,40 @@ public class UIManager : MonoBehaviour
         setRim.raycastTarget = false;
         settingsPanel = settingsGlass.gameObject;
         settingsPanelRT = settingsPanel.GetComponent<RectTransform>();
+        settingsGlass.AttachShadow(14f, -7f, 0.22f, 18f);   // v0.47：大面板软投影（插在面板与模糊底之间）
         // 注意 y 符号：pos.y = 540 - 设计y（设计坐标从顶部往下，uGUI 中心锚定 y 向上）
-        // 版面（v0.37 四行，自上而下）：标题 205 → 帧率 340 → 分辨率 465 → 阴影 590 →
-        // 物理步长 715 → 完成 845。v0.44：标题条/菱饰移除，改 iOS sheet 的纯排版。
-        Btn("FpsLeft", settingsRoot.transform, new Vector2(0.5f, 0.5f), new Vector2(-100, 200), new Vector2(110, 72),
+        // 版面（v0.46 五行，行距 105）：标题 205 → 帧率 320 → 分辨率 425 → 阴影 530 →
+        // 物理步长 635 → 音效 740 → 完成 845。v0.44：标题条/菱饰移除，改 iOS sheet 的纯排版。
+        Btn("FpsLeft", settingsRoot.transform, new Vector2(0.5f, 0.5f), new Vector2(-100, 220), new Vector2(110, 72),
             GlassNeutral, () => CycleSetting(0, -1));
-        Btn("FpsRight", settingsRoot.transform, new Vector2(0.5f, 0.5f), new Vector2(330, 200), new Vector2(110, 72),
+        Btn("FpsRight", settingsRoot.transform, new Vector2(0.5f, 0.5f), new Vector2(330, 220), new Vector2(110, 72),
             GlassNeutral, () => CycleSetting(0, +1));
-        Btn("ResLeft", settingsRoot.transform, new Vector2(0.5f, 0.5f), new Vector2(-100, 75), new Vector2(110, 72),
+        Btn("ResLeft", settingsRoot.transform, new Vector2(0.5f, 0.5f), new Vector2(-100, 115), new Vector2(110, 72),
             GlassNeutral, () => CycleSetting(1, -1));
-        Btn("ResRight", settingsRoot.transform, new Vector2(0.5f, 0.5f), new Vector2(330, 75), new Vector2(110, 72),
+        Btn("ResRight", settingsRoot.transform, new Vector2(0.5f, 0.5f), new Vector2(330, 115), new Vector2(110, 72),
             GlassNeutral, () => CycleSetting(1, +1));
-        Btn("ShadowLeft", settingsRoot.transform, new Vector2(0.5f, 0.5f), new Vector2(-100, -50), new Vector2(110, 72),
+        Btn("ShadowLeft", settingsRoot.transform, new Vector2(0.5f, 0.5f), new Vector2(-100, 10), new Vector2(110, 72),
             GlassNeutral, () => CycleSetting(2, -1));
-        Btn("ShadowRight", settingsRoot.transform, new Vector2(0.5f, 0.5f), new Vector2(330, -50), new Vector2(110, 72),
+        Btn("ShadowRight", settingsRoot.transform, new Vector2(0.5f, 0.5f), new Vector2(330, 10), new Vector2(110, 72),
             GlassNeutral, () => CycleSetting(2, +1));
         // v0.37：物理步长三档 0.5/1/2ms（Time.fixedDeltaTime，改了立即生效、持久化）
-        Btn("StepLeft", settingsRoot.transform, new Vector2(0.5f, 0.5f), new Vector2(-100, -175), new Vector2(110, 72),
+        Btn("StepLeft", settingsRoot.transform, new Vector2(0.5f, 0.5f), new Vector2(-100, -95), new Vector2(110, 72),
             GlassNeutral, () => CycleSetting(3, -1));
-        Btn("StepRight", settingsRoot.transform, new Vector2(0.5f, 0.5f), new Vector2(330, -175), new Vector2(110, 72),
+        Btn("StepRight", settingsRoot.transform, new Vector2(0.5f, 0.5f), new Vector2(330, -95), new Vector2(110, 72),
             GlassNeutral, () => CycleSetting(3, +1));
+        // v0.46：音效开/关（击球与碰撞音效，Sfx 播放前检查 GameSettings.SfxOn）
+        Btn("SfxLeft", settingsRoot.transform, new Vector2(0.5f, 0.5f), new Vector2(-100, -200), new Vector2(110, 72),
+            GlassNeutral, () => CycleSetting(4, -1));
+        Btn("SfxRight", settingsRoot.transform, new Vector2(0.5f, 0.5f), new Vector2(330, -200), new Vector2(110, 72),
+            GlassNeutral, () => CycleSetting(4, +1));
         Btn("SettingsDoneBtn", settingsRoot.transform, new Vector2(0.5f, 0.5f), new Vector2(0, -305), new Vector2(360, 100),
             GlassGreen, ToggleSettings, true);
-        // v0.44：行间发丝分隔线（半透白）
-        Img("Div1", settingsRoot.transform, new Vector2(0.5f, 0.5f), new Vector2(0, 137), new Vector2(780, 2), Hairline);
-        Img("Div2", settingsRoot.transform, new Vector2(0.5f, 0.5f), new Vector2(0, 12), new Vector2(780, 2), Hairline);
-        Img("Div3", settingsRoot.transform, new Vector2(0.5f, 0.5f), new Vector2(0, -113), new Vector2(780, 2), Hairline);
-        Img("Div4", settingsRoot.transform, new Vector2(0.5f, 0.5f), new Vector2(0, -238), new Vector2(780, 2), Hairline);
+        // v0.44：行间发丝分隔线（半透白）；v0.46 行距压缩为 105，补第五条
+        Img("Div1", settingsRoot.transform, new Vector2(0.5f, 0.5f), new Vector2(0, 167.5f), new Vector2(780, 2), Hairline);
+        Img("Div2", settingsRoot.transform, new Vector2(0.5f, 0.5f), new Vector2(0, 62.5f), new Vector2(780, 2), Hairline);
+        Img("Div3", settingsRoot.transform, new Vector2(0.5f, 0.5f), new Vector2(0, -42.5f), new Vector2(780, 2), Hairline);
+        Img("Div4", settingsRoot.transform, new Vector2(0.5f, 0.5f), new Vector2(0, -147.5f), new Vector2(780, 2), Hairline);
+        Img("Div5", settingsRoot.transform, new Vector2(0.5f, 0.5f), new Vector2(0, -252.5f), new Vector2(780, 2), Hairline);
 
         // ---- 147 满分提示横幅（白色玻璃胶囊，平时藏在屏幕外）----
         var popup = UIGlass.Add(mgo.transform, "Popup147", new Vector2(0.5f, 0.5f), new Vector2(0, -270), new Vector2(1150, 150),
@@ -337,6 +348,7 @@ public class UIManager : MonoBehaviour
             GlassStrong, 36f);
         replayGlass.raycastTarget = true;                    // 面板自身挡住下面的按钮
         replayPanel = replayGlass.gameObject;
+        replayGlass.AttachShadow(14f, -6f, 0.22f, 18f);     // v0.47：弹层软投影
         // v0.45：全屏透明挡板（选框的子物体，继承其淡入/射线开关）——选框弹出期间
         // 挡住屏幕上一切点击（击球/力度/瞄准），强制先做出选择（Rule 13/14(b)）。
         // 放在两个选项按钮之前创建（渲染在底层），按钮仍可点击。
@@ -520,7 +532,8 @@ public class UIManager : MonoBehaviour
     // ---------------------------------------------------------------------------------
     void ToggleSettings() { settingsOpen = !settingsOpen; settingsAnimT = Mathf.Clamp01(settingsAnimT); }
 
-    /// kind: 0=帧率 1=分辨率 2=阴影 3=物理步长(v0.37)；dir=+1/-1 循环方向。改完立即生效并持久化。
+    /// kind: 0=帧率 1=分辨率 2=阴影 3=物理步长(v0.37) 4=音效开/关(v0.46)；dir=+1/-1 循环方向。
+    /// 改完立即生效并持久化。
     void CycleSetting(int kind, int dir)
     {
         if (kind == 0)
@@ -534,6 +547,10 @@ public class UIManager : MonoBehaviour
         else if (kind == 3)
         {
             GameSettings.StepIndex = (GameSettings.StepIndex + dir + GameSettings.StepOptions.Length) % GameSettings.StepOptions.Length;
+        }
+        else if (kind == 4)
+        {
+            GameSettings.SfxOn = !GameSettings.SfxOn;   // 开/关二值：◀ ▶ 任一方向都翻转
         }
         else
         {
@@ -665,6 +682,8 @@ public class UIManager : MonoBehaviour
         et.triggers.Add(downEntry);
         // Q 弹按压动画：按下压扁、松手带过冲弹回（纯程序弹簧，见 UIJelly）
         go.AddComponent<UIJelly>();
+        // v0.47：软投影（参考图药丸质感）——插在按钮正下方，随所在面板 CanvasGroup 一起淡入淡出
+        body.AttachShadow(10f, -5f, 0.20f, 16f);
     }
 
     /// 力度滑条（v0.44 iOS 风：白色玻璃胶囊轨道 + 白色填充 + 圆形白球手柄 + 高光环）。
@@ -900,7 +919,8 @@ public class UIManager : MonoBehaviour
 
             // ---- v0.36：加塞圆盘文字（与 uGUI 面板逐像素对齐）----
             // 面板中心设计 y=700、尺寸 250×310；圆盘中心设计 y=708、半径 75
-            DrawLabel(FittedRect(1700, 595, 240, 40), "击球点", FontSub, dimGray, TextAnchor.MiddleCenter);
+            // v0.48：标题「击球点」由次级灰改为主墨色（黑），与下方"中杆"行同色
+            DrawLabel(FittedRect(1700, 595, 240, 40), "击球点", FontSub, ink, TextAnchor.MiddleCenter);
             DrawLabel(FittedRect(1700, 805, 240, 40), spinPad != null ? spinPad.Describe() : "中杆", FontSub, ink, TextAnchor.MiddleCenter);
 
             // ---- v0.36："球在手"提示（开球前 / 白球落袋后可在 D 区内拖动白球）----
@@ -943,25 +963,31 @@ public class UIManager : MonoBehaviour
 
             DrawLabel(CRect(960 + sox, 205, 400, 70), "设 置", FontHead, inkS, TextAnchor.MiddleCenter);
 
-            DrawLabel(CRect(655 + sox, 340, 260, 56), "帧率上限", FontMsg, gray, TextAnchor.MiddleRight);
-            DrawLabel(CRect(1075 + sox, 340, 340, 64), GameSettings.FpsText, FontVal, inkS, TextAnchor.MiddleCenter);
-            DrawLabel(CRect(860 + sox, 340, 110, 72), "◀", FontArrow, inkS, TextAnchor.MiddleCenter);
-            DrawLabel(CRect(1290 + sox, 340, 110, 72), "▶", FontArrow, inkS, TextAnchor.MiddleCenter);
+            DrawLabel(CRect(655 + sox, 320, 260, 56), "帧率上限", FontMsg, gray, TextAnchor.MiddleRight);
+            DrawLabel(CRect(1075 + sox, 320, 340, 64), GameSettings.FpsText, FontVal, inkS, TextAnchor.MiddleCenter);
+            DrawLabel(CRect(860 + sox, 320, 110, 72), "◀", FontArrow, inkS, TextAnchor.MiddleCenter);
+            DrawLabel(CRect(1290 + sox, 320, 110, 72), "▶", FontArrow, inkS, TextAnchor.MiddleCenter);
 
-            DrawLabel(CRect(655 + sox, 465, 260, 56), "渲染分辨率", FontMsg, gray, TextAnchor.MiddleRight);
-            DrawLabel(CRect(1075 + sox, 465, 340, 64), GameSettings.ResText, FontVal, inkS, TextAnchor.MiddleCenter);
-            DrawLabel(CRect(860 + sox, 465, 110, 72), "◀", FontArrow, inkS, TextAnchor.MiddleCenter);
-            DrawLabel(CRect(1290 + sox, 465, 110, 72), "▶", FontArrow, inkS, TextAnchor.MiddleCenter);
+            DrawLabel(CRect(655 + sox, 425, 260, 56), "渲染分辨率", FontMsg, gray, TextAnchor.MiddleRight);
+            DrawLabel(CRect(1075 + sox, 425, 340, 64), GameSettings.ResText, FontVal, inkS, TextAnchor.MiddleCenter);
+            DrawLabel(CRect(860 + sox, 425, 110, 72), "◀", FontArrow, inkS, TextAnchor.MiddleCenter);
+            DrawLabel(CRect(1290 + sox, 425, 110, 72), "▶", FontArrow, inkS, TextAnchor.MiddleCenter);
 
-            DrawLabel(CRect(655 + sox, 590, 260, 56), "画面阴影", FontMsg, gray, TextAnchor.MiddleRight);
-            DrawLabel(CRect(1075 + sox, 590, 340, 64), GameSettings.ShadowText, FontVal, inkS, TextAnchor.MiddleCenter);
-            DrawLabel(CRect(860 + sox, 590, 110, 72), "◀", FontArrow, inkS, TextAnchor.MiddleCenter);
-            DrawLabel(CRect(1290 + sox, 590, 110, 72), "▶", FontArrow, inkS, TextAnchor.MiddleCenter);
+            DrawLabel(CRect(655 + sox, 530, 260, 56), "画面阴影", FontMsg, gray, TextAnchor.MiddleRight);
+            DrawLabel(CRect(1075 + sox, 530, 340, 64), GameSettings.ShadowText, FontVal, inkS, TextAnchor.MiddleCenter);
+            DrawLabel(CRect(860 + sox, 530, 110, 72), "◀", FontArrow, inkS, TextAnchor.MiddleCenter);
+            DrawLabel(CRect(1290 + sox, 530, 110, 72), "▶", FontArrow, inkS, TextAnchor.MiddleCenter);
 
-            DrawLabel(CRect(655 + sox, 715, 260, 56), "物理步长", FontMsg, gray, TextAnchor.MiddleRight);
-            DrawLabel(CRect(1075 + sox, 715, 340, 64), GameSettings.StepText, FontVal, inkS, TextAnchor.MiddleCenter);
-            DrawLabel(CRect(860 + sox, 715, 110, 72), "◀", FontArrow, inkS, TextAnchor.MiddleCenter);
-            DrawLabel(CRect(1290 + sox, 715, 110, 72), "▶", FontArrow, inkS, TextAnchor.MiddleCenter);
+            DrawLabel(CRect(655 + sox, 635, 260, 56), "物理步长", FontMsg, gray, TextAnchor.MiddleRight);
+            DrawLabel(CRect(1075 + sox, 635, 340, 64), GameSettings.StepText, FontVal, inkS, TextAnchor.MiddleCenter);
+            DrawLabel(CRect(860 + sox, 635, 110, 72), "◀", FontArrow, inkS, TextAnchor.MiddleCenter);
+            DrawLabel(CRect(1290 + sox, 635, 110, 72), "▶", FontArrow, inkS, TextAnchor.MiddleCenter);
+
+            // v0.46：音效开/关（第五行）
+            DrawLabel(CRect(655 + sox, 740, 260, 56), "音效", FontMsg, gray, TextAnchor.MiddleRight);
+            DrawLabel(CRect(1075 + sox, 740, 340, 64), GameSettings.SfxText, FontVal, inkS, TextAnchor.MiddleCenter);
+            DrawLabel(CRect(860 + sox, 740, 110, 72), "◀", FontArrow, inkS, TextAnchor.MiddleCenter);
+            DrawLabel(CRect(1290 + sox, 740, 110, 72), "▶", FontArrow, inkS, TextAnchor.MiddleCenter);
 
             DrawLabel(CRect(960 + sox, 845, 360, 100), "完 成", FontVal, w, TextAnchor.MiddleCenter);
         }

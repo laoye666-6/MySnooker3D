@@ -209,6 +209,30 @@ public class BallController : MonoBehaviour
     {
         if (GameManager.I != null) GameManager.I.NotifyContact(this, c.collider);
         CushionSpin(c);                                  // v0.36：侧塞撞库的切向踢出
+        CollisionSfx(c);                                 // v0.46：碰撞音效（球-球 / 球-库）
+    }
+
+    // ---------------------------------------------------------------------------------
+    // v0.46：碰撞音效。撞到球 → Sfx.Ball（清脆 click）；撞到库边/颚部/袋衬/地板
+    // → Sfx.Cush（闷响）。速度取"接触法线方向的相对速度"——掠射轻擦声音小、正撞响亮，
+    // 与真实台球一致。contacts[].normal 的方向符号在各平台有约定歧义（见 CushionSpin
+    // 注释），但音效只取 Dot 的绝对值，符号无影响。
+    // 球-球碰撞双方都会收到 OnCollisionEnter：按实例 ID 只让其中一方出声，防止双响。
+    // 轻触门槛与开球爆堆节流在 Sfx 内部处理。
+    // ---------------------------------------------------------------------------------
+    void CollisionSfx(Collision c)
+    {
+        if (potted) return;
+        var ob = c.collider != null ? c.collider.GetComponentInParent<BallController>() : null;
+        float vn = c.relativeVelocity.magnitude;         // 兜底：无接触点时用全相对速度
+        if (c.contacts != null && c.contacts.Length > 0)
+            vn = Mathf.Abs(Vector3.Dot(c.relativeVelocity, c.contacts[0].normal));
+        if (ob != null && ob != this)
+        {
+            if (GetInstanceID() > ob.GetInstanceID()) return;   // 对方也收到同一次回调，只一方出声
+            Sfx.Ball(vn);
+        }
+        else Sfx.Cush(vn);
     }
 
     // ---------------------------------------------------------------------------------

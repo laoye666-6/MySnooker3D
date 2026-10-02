@@ -1,4 +1,4 @@
-# 双人斯诺克 3D —— 项目上下文总结（截至 v0.45，2026-09-27）
+# 双人斯诺克 3D —— 项目上下文总结（截至 v0.48，2026-10-02）
 
 > 本文件为完整压缩上下文，供导入 AI 助手继续开发使用。
 > 项目根目录：`E:\Snooker`（工作区）；Unity 工程：`E:\Snooker3D`
@@ -16,7 +16,7 @@
 **真实袋口物理（弧形颚部 / 台呢真洞下坠 / 撞颚晃袋）**。
 
 **已开源**：https://github.com/laoye666-6/MySnooker3D （public / MIT，Release 已到 v0.45，含 APK）
-**交付物**：`E:\Snooker3D\Builds\Snooker3D.apk`（v0.43，双架构 ARM64+X86_64，IL2CPP，约 70MB）
+**交付物**：`E:\Snooker3D\Builds\Snooker3D.apk`（v0.48，双架构 ARM64+X86_64，IL2CPP，约 70MB）
 
 ## 二、环境与路径（全部实测有效）
 
@@ -28,11 +28,11 @@
 | git / gh | `D:\Program Files\Git\cmd\git.exe`；`C:\Program Files\GitHub CLI\gh.exe`（已登录 laoye666-6） |
 | MuMu adb | `127.0.0.1:16384`（1600×900 横屏，Android 15） |
 | Unity 工程 | `E:\Snooker3D`（`Assets\Scripts` / `Assets\Editor` 由 sync.bat 同步） |
-| **源码母本（权威）** | `E:\Snooker\unity_src\Scripts`（15 个 cs）+ `unity_src\Editor`（4 个）；另有 `shaders\LiquidGlass.shader` 与 `android\AndroidManifest.xml` 母本（sync.bat 只同步 *.cs，需手工拷入工程） |
+| **源码母本（权威）** | `E:\Snooker\unity_src\Scripts`（16 个 cs）+ `unity_src\Editor`（4 个）；另有 `shaders\LiquidGlass.shader`、`shaders\GlassBlur.shader` 与 `android\AndroidManifest.xml` 母本（sync.bat 只同步 *.cs，需手工拷入工程） |
 | Blender 脚本 | `E:\Snooker\blender\`：make_table / bake_cloth / make_icon / open_table_edit / render_pockets / shrink_pockets（废弃） |
-| 资产产物 | `E:\Snooker\assets\`（table.obj、cue.obj、cloth/wood 贴图、icon.png、preview_*.png） |
+| 资产产物 | `E:\Snooker\assets\`（table.obj、cue.obj、cloth/wood 贴图、icon.png、preview_*.png、audio\sfx_*.wav 音效 9 个） |
 | 开源仓库 | `E:\Snooker\MySnooker3D`（origin 已配，master；`docs\DEVELOPMENT.md` = 详细开发文档） |
-| 辅助脚本 | `E:\Snooker\tools\`：sync.bat / m.bat / regress.sh + 4 个编辑器 GUI 自动化 ps1 |
+| 辅助脚本 | `E:\Snooker\tools\`：sync.bat / m.bat / regress.sh / make_audio.py（音效合成）+ 4 个编辑器 GUI 自动化 ps1 |
 | 截图/日志 | `E:\Snooker\shots\`（编辑器截图在 `shots\editor\`）、`E:\Snooker\logs\` |
 | 文档 | `E:\Snooker\README.md`（踩坑 38 条 + 版本史）、本文件、`DSH_IMPORT_PROMPT.txt` |
 
@@ -40,7 +40,7 @@
 
 ## 三、代码架构（全部含详细中文注释）
 
-**运行时 `Scripts\`（11 个）：**
+**运行时 `Scripts\`（16 个）：**
 - `G.cs` — 全局常量：球桌尺寸(米)、**袋口几何（v0.41 新增）**、滚动摩擦 0.11、出杆初速 0.55~6.0、
   停判阈值 0.09、置球点、分值/颜色/中文名、ColorOrder、加塞物理参数、
   工具函数 `ClampToD()/InD()/InPocket()/PastCornerPocketCenter()`
@@ -65,7 +65,11 @@
 - `Haptics.cs` — 按钮触感（安卓 VibrationEffect，按下轻点/主按钮确认重点）
 - `GlassSceneCamera.cs` — 副相机：每帧把场景绘到半分辨率 RT（_GlassScene）供玻璃折射/光晕采样，
   LateUpdate 隔帧 enable 折半成本
-- `GameSettings.cs` — 帧率(60/90/120/144)/分辨率(50/75/100%)/阴影/物理步长，PlayerPrefs 持久化
+- `Sfx.cs` — **碰撞/击球音效（v0.46）**：击球/球碰球/球碰库三类各 3 个合成变体
+  （Resources/Audio 预导入，`tools\make_audio.py` 生成）；响度随法向撞击速度幂函数映射、
+  音调随速度升高+微抖；同类最小间隔节流（开球防爆音）+ 实例 ID 防双响 + 10 路音源池；
+  2D 播放；受 GameSettings.SfxOn 开关控制
+- `GameSettings.cs` — 帧率(60/90/120/144)/分辨率(50/75/100%)/阴影/物理步长/音效开关(v0.46)，PlayerPrefs 持久化
 
 **Editor `Editor\`（4 个）：**
 - `BuildGame.cs` — 命令行构建（`-x86only` 调试；**版本号在此改**；写入图标；构建后自校验版本）
@@ -106,6 +110,9 @@ blender.exe -b -P E:\Snooker\blender\render_pockets.py  → shots\pocketrender_*
 :: 重新生成美术资产（改尺寸/袋口形状时）
 blender.exe -b -P E:\Snooker\blender\make_table.py   （再 bake_cloth.py 补 UV，然后拷 assets → 工程）
 
+:: 重新生成碰撞音效（v0.46；再拷 assets\audio\*.wav → Assets\Resources\Audio\）
+python E:\Snooker\tools\make_audio.py
+
 :: MuMu 安装/启动/截图（Git Bash 下 export MSYS_NO_PATHCONV=1）
 "E:\Program files\Netease\MuMu\nx_main\adb.exe" connect 127.0.0.1:16384
 "E:\Program files\Netease\MuMu\nx_main\adb.exe" -s 127.0.0.1:16384 install -r -t E:/Snooker3D/Builds/Snooker3D.apk
@@ -118,9 +125,50 @@ blender.exe -b -P E:\Snooker\blender\make_table.py   （再 bake_cloth.py 补 UV
 连接被拒时先 `MuMuManager.exe control -v 0 launch` 重启（约 55 秒）。
 IL2CPP 全量构建 40~60 分钟；**纯 C# / 纯资产改动走增量约 3~7 分钟**。
 
-## 五、本轮（v0.41~v0.45）改动
+## 五、本轮（v0.41~v0.47）改动
 
-### v0.44~v0.45 —— iOS 液态玻璃 UI 全面重做 + 犯规选择权门禁（最新，2026-09-28 发版）
+- **接线**：`Sfx.Init(transform)` 在 Bootstrapper.Init 的 ui.Build() 之后；AudioListener
+  本来就挂在主相机（v0.28 起）。编辑器离线测试不 Init（I==null 静默）、手动步进不派发
+  碰撞回调 → 对回归零影响。
+
+### v0.47 —— 液态玻璃重做：重磨砂 + 边缘拉丝（2026-10-01，参考 DeepSeek 风格稿）
+
+- **踩坑 42（修）**：v0.44~v0.45 的 LiquidGlass.shader 引用未定义变量 `spec` → 整 Pass
+  编译失败 → 静默走 `Fallback "UI/Default"` 平色渲染。母本/工程逐字节一致、截图"正常"，
+  极具迷惑性。**Fallback 吞 shader 编译错误，"没报错"≠"在用新 Pass"。**
+- **LiquidGlass.shader 重写**：圆角矩形 SDF（UIGlass 推 `_RectHW/_CornerR`）→
+  边缘距离/法线/切向；磨砂主体采 `_GlassBlur`（四分之一分辨率+两轮分离高斯，
+  GlassSceneCamera 的 GlassBlur.shader 产出，RT→RT Blit 确定性）；边缘**法向透镜**
+  （lens·band² 把界外内容拉进来）+ **切向拉丝**（streak·band² 5 点拖影，大面板 90px/
+  控件 44px）；顶部 sheen、底部厚度阴影、rim 细亮边、边缘轻收暗、去饱和+奶白 frost；
+  `_SoftMode` 软边分支专用于投影；游灯光源降为点缀（0.18/0.10）。
+- **UIGlass**：`UseLiquid()` 全参入口；`UseRefraction/UseBlur` 变预设（旧签名不变）；
+  `AttachShadow()` 软投影（插到元素正后方，随面板 CanvasGroup 淡入淡出）——按钮/
+  设置/重打/加塞面板/力度胶囊挂投影；独立淡入淡出的提示胶囊/147 横幅不加。
+- **GLES 安全**：无循环、pow 底数全 clamp、uniform 分支；编辑器截图 11 帧确认成型。
+- **踩坑 43（MuMu 环境差异）**：MuMu GLES3 上多数玻璃元素不渲染（自带 CanvasGroup 的
+  例外），三组对照实验排除 CanvasGroup/UIJelly/参数，真机无异常 → **玻璃验收以
+  编辑器截图 + 真机为准，MuMu 不作数**；定位手段=shader 临时输出顶点色（踩坑 39 法）。
+
+### v0.46 —— 碰撞/击球音效（响度音调随速度，2026-10-01）
+
+- **三类音效**：击球"嗒"（`GameManager.Shoot` 出杆瞬间 `Sfx.Cue(sp)`）、球碰球"咔"与
+  球碰库"噗"（`BallController.CollisionSfx`，撞球→Ball、撞库边/颚/袋衬/地板→Cush）。
+- **速度映射**：响度 = Lerp(Min,Max,(v/VRef)^幂)（Ball 0.6 / Cush 0.7 / Cue 1.0）；
+  音调 = Min + Span·√(v01) 再 ±2% 抖动；速度取**接触法线方向相对速度**
+  （|Dot(relativeVelocity, normal)|，符号歧义无影响）；轻触门槛 0.12/0.15 m/s 以下不出声。
+- **节流/防双响**：同类最小间隔 25~50ms；球-球按实例 ID 只一方出声；10 路轮转音源池。
+- **资产**：`tools\make_audio.py` 程序化合成（阻尼正弦+低通噪声，确定性可复现），
+  9 个 WAV（sfx_{cue,ball,cush}_{1..3}，44.1kHz/16bit/mono，共约 66KB）→
+  `assets\audio\`（母本）→ 手工拷 `Assets\Resources\Audio\`（sync.bat 只同步 *.cs）。
+  **预导入 AudioClip，不做运行时合成**（踩坑 25 教训）；2D 播放不随机位漂移。
+- **设置面板第五行「音效」**：`GameSettings.SfxOn`（键 `snk_sfx`），行距 125→105、
+  分隔线补至 5 条、IMGUI 行同步（帧率 320/分辨率 425/阴影 530/步长 635/音效 740/完成 845）。
+- **接线**：`Sfx.Init(transform)` 在 Bootstrapper.Init 的 ui.Build() 之后；AudioListener
+  本来就挂在主相机（v0.28 起）。编辑器离线测试不 Init（I==null 静默）、手动步进不派发
+  碰撞回调 → 对回归零影响。
+
+### v0.44~v0.45 —— iOS 液态玻璃 UI 全面重做 + 犯规选择权门禁（2026-09-28 发版）
 
 - **液态玻璃**：全部按钮/面板为水玻璃——UIGlass 零贴图顶点网格（圆角/胶囊/圆形/描边环，
   uv0=[-1,1] 供 shader 算法线）+ LiquidGlass.shader（穹顶法线偏移采样 `_GlassScene` 做
@@ -305,6 +353,10 @@ WPBSA **Section 3 Rule 3(h)(i)**："the next ball on is a colour of the striker'
   设置弹窗背景随滑入逐渐高斯模糊 / 字号 FontXxx 常量阶梯；GLES 铁律：pow() 底数 max(…,1e-4)）；
   **v0.45 规则修复：Miss 选框未选择前禁止击球**（Rule 14(b)/13 选择权先于下一杆；
   ChoicePending 门禁 + 选框全屏挡板）
+- **v0.46** — **碰撞/击球音效**（击球/球碰球/球碰库三类，响度音调随撞击速度映射，
+  合成变体+节流防双响；设置面板加音效开关；`tools\make_audio.py` 生成 WAV 资产）
+- **v0.47** — **液态玻璃重做**（重磨砂+边缘拉丝：SDF 光学/四分辨率磨砂链/软投影；
+  修复踩坑 42：shader 引用未定义变量被 Fallback 静默平色掩盖两版）
 
 ## 十、当前功能全清单（均已验收）
 
@@ -313,7 +365,8 @@ WPBSA **Section 3 Rule 3(h)(i)**："the next ball on is a colour of the striker'
 指定彩球) → 力度滑条 → 击球(出杆动画) → 真实物理(滚动摩擦/库边反弹/**真洞落袋/撞颚晃袋**/
 粘库修复) → 完整规则(首触/罚分/白球重置/彩球回点/红球回点/清彩/**指定彩球按指定球计分**/
 **Miss 选框未选择前禁止击球**/Miss 让对手重打/自由球) → 计分(HUD 单杆分+总分+阵营色点) →
-147 提示 → 结算面板；全部按钮 **iOS 液态玻璃**（清澈折射/反射/游动光源光晕/**Q 弹**/**触感**）
+147 提示 → 结算面板；全部按钮 **iOS 液态玻璃**（清澈折射/反射/游动光源光晕/**Q 弹**/**触感**）；
+**碰撞音效**（击球/球碰球/球碰库，响度音调随速度，v0.46）
 
 ## 十一、遗留 / 可做
 

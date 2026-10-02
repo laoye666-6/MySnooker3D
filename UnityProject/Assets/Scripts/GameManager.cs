@@ -284,6 +284,7 @@ public class GameManager : MonoBehaviour
         cue.Rb.WakeUp();                                  // 关键：唤醒休眠刚体！
         cue.Rb.velocity = dir * sp;
         cue.ApplySpin(dir, sp, spinV, spinH);             // v0.36：加塞 → 白球初始角速度
+        Sfx.Cue(sp);                                      // v0.46：杆头击球音效（响度/音调随力度）
         Invoke(nameof(LogCueVel), 0.2f);
         Invoke(nameof(LogCueVel), 0.6f);
         Invoke(nameof(LogCueVel), 1.2f);

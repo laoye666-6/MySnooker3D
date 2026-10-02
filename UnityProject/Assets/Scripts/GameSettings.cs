@@ -1,5 +1,5 @@
 // =====================================================================================
-// GameSettings.cs —— 游戏设置：帧率 / 渲染分辨率 / 阴影画质 / 物理步长
+// GameSettings.cs —— 游戏设置：帧率 / 渲染分辨率 / 阴影画质 / 物理步长 / 音效开关（v0.46）
 //
 // 数据流：Bootstrapper 启动时 CaptureNative() 记录设备原生分辨率 → Load() 读 PlayerPrefs
 //        → Apply() 应用；UIManager 的设置面板修改后调用 Save()+Apply() 立即生效并持久化。
@@ -25,6 +25,7 @@ public static class GameSettings
     public static int ResIndex = 2;        // 当前分辨率档下标，默认 100%
     public static bool Shadows = true;     // 阴影开关，默认开
     public static int StepIndex = 2;       // 当前物理步长档下标，默认 2ms（v0.36 起的值）
+    public static bool SfxOn = true;       // v0.46：碰撞/击球音效开关，默认开（Sfx 播放前检查）
 
     public static int NativeW = 1920;      // 设备原生宽（CaptureNative 后有效）
     public static int NativeH = 1080;      // 设备原生高
@@ -43,6 +44,7 @@ public static class GameSettings
         ResIndex = Mathf.Clamp(PlayerPrefs.GetInt("snk_resIdx", 2), 0, ResOptions.Length - 1);
         Shadows = PlayerPrefs.GetInt("snk_shadows", 1) == 1;
         StepIndex = Mathf.Clamp(PlayerPrefs.GetInt("snk_stepIdx", 2), 0, StepOptions.Length - 1);
+        SfxOn = PlayerPrefs.GetInt("snk_sfx", 1) == 1;
     }
 
     /// 写回 PlayerPrefs。
@@ -52,6 +54,7 @@ public static class GameSettings
         PlayerPrefs.SetInt("snk_resIdx", ResIndex);
         PlayerPrefs.SetInt("snk_shadows", Shadows ? 1 : 0);
         PlayerPrefs.SetInt("snk_stepIdx", StepIndex);
+        PlayerPrefs.SetInt("snk_sfx", SfxOn ? 1 : 0);
         PlayerPrefs.Save();
     }
 
@@ -79,4 +82,5 @@ public static class GameSettings
     public static string ResText { get { return Mathf.RoundToInt(ResOptions[ResIndex] * 100) + "%"; } }
     public static string ShadowText { get { return Shadows ? "开" : "关"; } }
     public static string StepText { get { return (StepOptions[StepIndex] * 1000f).ToString("F1").TrimEnd('0', '.') + "ms"; } }
+    public static string SfxText { get { return SfxOn ? "开" : "关"; } }
 }

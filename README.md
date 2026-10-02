@@ -5,7 +5,7 @@
 彩球回点、清彩、只剩黑球终局、指定彩球、犯规与未击到 Miss、自由球），辅助瞄准线可随时开关，
 另带入场运镜、设置界面、单杆分 HUD 与 147 满分提示。
 
-**已开源**：https://github.com/laoye666-6/MySnooker3D （public / MIT，Latest Release v0.45 附 APK 直链）
+**已开源**：https://github.com/laoye666-6/MySnooker3D （public / MIT，Latest Release v0.48 附 APK 直链）
 
 ## 目录结构
 
@@ -18,12 +18,14 @@ E:\Snooker\
 │  ├─ open_table_edit.py        # GUI 调试用：打开球桌+布纹材质、取景出图，存 table_edit.blend
 │  ├─ render_pockets.py         # 袋口特写离线渲染（3 张），改袋口外观后校验用
 │  └─ shrink_pockets.py         # 【已废弃】早期按 scale 缩袋口黑柱；v0.29 起改由 make_table.py 参数控制
-├─ shaders\                     # LiquidGlass.shader 母本（sync.bat 只同步 *.cs，需手工拷入工程）
+├─ shaders\                     # LiquidGlass.shader + GlassBlur.shader 母本
+│                               #（sync.bat 只同步 *.cs，需手工拷入工程）
 ├─ android\                     # AndroidManifest.xml 母本（含 VIBRATE 权限，同上手工拷入）
 ├─ assets\                      # 产物：table.obj/cue.obj(+.mtl)、cloth_texture.png、wood_texture.png、
-│                               #       icon.png、preview_persp.png、preview_top.png
+│                               #       icon.png、preview_persp.png、preview_top.png、
+│                               #       audio\sfx_{cue,ball,cush}_{1..3}.wav（音效，v0.46）
 ├─ unity_src\                   # 【源码母本 · 权威】改动先写这里，再跑 tools\sync.bat 同步
-│  ├─ Scripts\                  # 游戏运行时代码（15 个，同步到 Unity 工程）
+│  ├─ Scripts\                  # 游戏运行时代码（16 个，同步到 Unity 工程）
 │  │  ├─ G.cs                  # 标准尺寸常量 / 球种 / 分值 / 颜色
 │  │  ├─ Bootstrapper.cs       # 开局自建场景：灯光/相机/球桌物理碰撞体/22颗球/UI
 │  │  ├─ GameManager.cs        # 状态机 + 规则落地（加分/回点/换手/终局）+ IsSnookered 几何判定
@@ -37,14 +39,16 @@ E:\Snooker\
 │  │  ├─ UIGlass.cs            # 液态玻璃图形（圆角/胶囊/圆形/描边环零贴图顶点网格）
 │  │  ├─ UIJelly.cs            # 按钮 Q 弹动画（按下压扁/松手欠阻尼弹簧过冲回弹）
 │  │  ├─ Haptics.cs            # 按钮触感反馈（安卓 VibrationEffect，轻/重两档）
+│  │  ├─ Sfx.cs                # 碰撞/击球音效（响度音调随速度映射；同类节流；变体随机）
 │  │  ├─ GlassSceneCamera.cs   # 副相机：每帧渲染半分辨率场景 RT 供玻璃折射/光晕采样
-│  │  └─ GameSettings.cs       # 帧率 60/90/120/144、分辨率 50/75/100%、阴影，PlayerPrefs 持久化
+│  │  └─ GameSettings.cs       # 帧率 60/90/120/144、分辨率 50/75/100%、阴影、音效，PlayerPrefs 持久化
 │  └─ Editor\
 │     ├─ BuildGame.cs          # 命令行构建（-x86only 可选，仅模拟器调试用；版本号在此改）
 │     ├─ PhysTest.cs           # 编辑器内离线物理回归四入口（开球/库边/加塞/袋口；免打包快速验证）
 │     ├─ RuleTest.cs           # 规则回归断言（58 条，不走物理、不需模拟器）
 │     └─ ShotTest.cs           # 编辑器内自动截图驱动（一条时间线出 11 张关键帧，含袋口特写）
 ├─ tools\                       # m.bat: adb 快捷命令 | sync.bat: unity_src → 工程 同步
+│                               # make_audio.py: 程序化合成碰撞音效 WAV（v0.46）
 ├─ shots\                       # 验收截图：MuMu 实测 117 张（s01~s45 + v0xx_* 逐版本 + pocketrender_* 袋口特写）
 │                               #   无头编辑器截图（ShotTest 出图）另存于 shots\editor\（11 张）
 ├─ logs\                        # 构建/测试日志
@@ -58,9 +62,10 @@ E:\Snooker\
    └─ PUBLISH_TO_GITHUB.bat     # 发布脚本（纯 ASCII）
 
 E:\Snooker3D\                   # Unity 工程根
-├─ Assets\Scripts, Assets\Editor          # 由 sync.bat 同步（11 个运行时 + 4 个 Editor）
+├─ Assets\Scripts, Assets\Editor          # 由 sync.bat 同步（16 个运行时 + 4 个 Editor）
 ├─ Assets\Resources\Models\table.obj,cue.obj(+.mtl)
 ├─ Assets\Resources\Textures\cloth_texture.png, wood_texture.png
+├─ Assets\Resources\Audio\sfx_*.wav        # 碰撞音效（从 assets\audio\ 手工拷入，v0.46）
 ├─ Assets\Resources\Shaders\LiquidGlass.shader   # 液态玻璃（从 shaders\ 母本手工拷入）
 ├─ Assets\Plugins\Android\AndroidManifest.xml     # 含 VIBRATE 权限（从 android\ 母本手工拷入）
 ├─ Assets\Resources\Fonts\DroidSansFallback.ttf   # 【实际在用】中文 UI 字体（Apache-2.0）
@@ -104,6 +109,10 @@ E:\Snooker\tools\sync.bat
 :: 5. Blender 重新生成球桌（改尺寸/颜色后）
 "D:\Program Files\STEAM\steamapps\common\Blender\blender.exe" -b -P E:\Snooker\blender\make_table.py
 :: 然后把 E:\Snooker\assets\*.obj 拷到 Assets\Resources\Models\
+
+:: 6. 重新生成碰撞音效（改音色后；v0.46）
+python E:\Snooker\tools\make_audio.py
+:: 然后把 E:\Snooker\assets\audio\*.wav 拷到 Assets\Resources\Audio\
 ```
 
 ## 安装与运行（MuMu）
@@ -132,7 +141,7 @@ E:\Snooker\tools\sync.bat
 - **自由球（v0.35）**：被判自由球时 HUD 出现「自由球：可指定任意一颗球作为球 on」提示
 - **双人**：同屏轮流击球，顶部记分板实时显示比分/目标球/剩余红球
 - **设置**（主菜单或 HUD 左下"设置"）：帧率上限、渲染分辨率、画面阴影、**物理步长**
-  （0.5ms / 1ms / 2ms，默认 2ms；改动立即生效并持久化，重启后沿用）
+  （0.5ms / 1ms / 2ms，默认 2ms；改动立即生效并持久化，重启后沿用）、**音效开/关**（v0.46）
 
 ## 已实现规则（v0.34 起为完整斯诺克规则，判定集中在纯函数 SnookerRules.cs）
 
@@ -323,6 +332,33 @@ E:\Snooker\tools\sync.bat
     于是"指定蓝球、打进绿球"被算成合法 3 分（应为罚 5 分）。
     **教训**：`switch` 里"看起来总是合法"的分支，往往漏了"对象是否匹配"的校验；
     规则里凡出现"指定的球""球 on"这类限定词，都要在计分前比对一次。
+39. **GLES 铁律：shader 里 pow() 底数必须 max(…,1e-4)**（v0.45）：液态玻璃穹顶中心
+    n.z==1 → pow(0,1.7) 在部分 GLES 驱动返回 NaN，整片玻璃中心渲染成黑色——编辑器
+    D3D11 一切正常，极具迷惑性。定位手段：做一个"直接输出顶点色"的诊断构建。
+    同类坑：场景采样（GrabPass/相机命令缓冲/OnRenderImage）在 MuMu GLES3 上间歇性
+    黑帧/清屏色，最终改用 GlassSceneCamera 副相机渲染半分辨率 RT（多相机渲染是唯一
+    确定性方案），并 LateUpdate 隔帧 enable 折半成本（折射源 30Hz 肉眼不可辨）。
+40. **ShotTest 会把物理步长 0.5ms 持久化**（v0.45）：时间线演示切 0.5ms 后若中断，下一轮
+    编辑器以 2000Hz 物理启动，首帧慢到像卡死（ShotTest 连续"白屏无产出"的元凶）。
+    修法：时间线开头强制回 2ms 并 Save；编辑器 PlayerPrefs 在注册表
+    HKCU\Software\Unity\UnityEditor\SnookerLab\Snooker3D（键名是哈希形式如
+    snk_stepIdx_h4150860907）。另内置 150s 看门狗自动退出僵死会话。
+41. **编辑器播放模式仍会间歇白屏卡死**（ShotTest 顽疾，v0.45）：runInBackground 也压不住，
+    表现=[SHOT] 停在 entering play mode / READY 后协程全灭、无产出。缓解：启动后用
+    SetWindowPos HWND_TOPMOST 钉住窗口（实测大幅减少）；卡死后杀进程删 Temp/UnityLockfile
+    重试。另：`export MSYS_NO_PATHCONV=1` 会把 `cmd //c` 的双斜杠转换也禁掉 → cmd 进
+    交互模式、bat 根本没执行——跑 .bat 时不要带该变量（仅 robocopy/adb 参数需要）。
+42. **Fallback 会静默吞掉 shader 编译错误**（v0.47 发现，已掩盖两版）：v0.44~v0.45 的
+    LiquidGlass.shader 引用了未定义变量 `spec`，整个 Pass 编译失败，Unity 自动走
+    `Fallback "UI/Default"` 平色渲染——界面"看起来正常"（平色玻璃凑合像），母本与工程
+    副本还逐字节一致，毫无异常迹象。**教训**：改 shader 后必须在编辑器 Console 确认无
+    "Shader error"，或对玻璃做一次"必须有折射内容"的针对性截图；"材质在渲染"≠"在用
+    你写的那个 Pass"。
+43. **MuMu GLES3 不渲染多数 LiquidGlass 元素，真机正常**（v0.47）：自带 CanvasGroup 的
+    元素（中央提示胶囊/大面板）能渲染，按钮/顶条/加塞盘等整块消失；CanvasGroup/
+    UIJelly/材质参数三组对照实验逐一排除，无日志无异常。**结论：MuMu 的 GL 翻译层
+    不可作为玻璃 UI 的验收环境**——玻璃验收 = 编辑器截图（ShotTest）+ 真机；
+    定位手段：shader 临时直接输出顶点色（踩坑 39 方法），验完立即还原。
 
 ## 已验证（MuMu 实测）
 
@@ -357,6 +393,86 @@ E:\Snooker\tools\sync.bat
 - GitHub Release：v0.45（Latest，含 APK）、v0.43、v0.42、v0.41、v0.40、v0.36、v0.35、v0.33
 
 ## 版本记录
+
+### v0.48（第 48 次迭代）—— HUD 顶条圆角 + 击球点文字改黑
+
+- 顶部计分板顶条（TopPanel）由直角矩形改**圆角 28**（与加塞盘面板一致）；
+- 加塞圆盘标题「击球点」文字由次级灰（Ink2）改为主墨色（Ink，黑），与下方"中杆"行同色；
+- 纯 UI 微调，规则/物理零改动。回归：ShotTest 11 帧编辑器截图确认（玻璃验收按踩坑 43
+  约定以编辑器+真机为准）。
+
+### v0.47（第 47 次迭代）—— 液态玻璃重做：重磨砂 + 边缘拉丝（参考 DeepSeek 风格稿）
+
+按用户提供的参考图重做玻璃质感——目标从"清澈折射+游动光斑"改为 **iOS 26 液态玻璃的
+"厚磨砂玻璃板"**：背景重度高斯模糊、整体奶白提亮、**边缘把界外内容"拉进来"并沿边缘
+方向"抹开"（透镜拉丝）**、顶部内侧受光高光、底部内侧厚度阴影、最边缘一圈细亮边、
+元素下方软投影。
+
+**① 修复一个被掩盖两版的 shader 编译错误（踩坑 42）**：v0.44~v0.45 的 LiquidGlass.shader
+第 142 行引用了未定义变量 `spec`——整个 Pass 编译失败，Unity 静默走 `Fallback "UI/Default"`
+平色渲染。母本与工程副本逐字节一致、编辑器截图"看起来正常"（因为平色也在渲染），极具
+迷惑性；直到本次重写通读 shader 才发现。**教训：Fallback 会吞掉 shader 编译错误，
+"没报错"≠"在用新 shader"，改 shader 后必须确认 Console 无 shader 编译错误。**
+
+**② LiquidGlass.shader 重写**（GLES 安全：无循环、无动态分支采样、pow 底数全部 clamp）：
+- 圆角矩形 **SDF**（解析有向距离场，UIGlass 每次重建网格时推送 `_RectHW/_CornerR`）：
+  fragment 内求到边缘距离 d、外法线 nrm（数值梯度）、切向 tng——一切边缘光学由此驱动；
+- **磨砂主体**：采样 `_GlassBlur`（新增的四分之一分辨率磨砂 RT）+ 9 点小核模糊；
+- **边缘法向透镜**：`lens * band²` 沿法线向外采样，把玻璃外的背景"拉进"边缘（挤压感）；
+- **边缘切向拉丝**：`streak * band²` 跨度上 5 点加权拖影——大面板 90px 长拉丝
+  （参考图的大面板拖影约占高度 15~25%），控件 44px 短拉丝；
+- **光层**：顶部内侧 sheen（band²·max(nrm.y,0)）、底部内侧厚度阴影（band·max(−nrm.y,0)）、
+  最边缘 rim 细亮边（band⁶）、边缘轻收暗（亮背景可读性）、轻微去饱和 + 奶白 frost 提亮；
+- **软边模式 `_SoftMode`**：同一 shader 分支输出纯色 + alpha 向网格边缘淡出——专用于投影；
+- 三盏游动光源保留但大幅调低（0.18/0.10），只作点缀。
+
+**③ GlassSceneCamera 加磨砂链**：新增四分之一分辨率 RT，相机隔帧渲染后对上一帧场景做
+**两轮分离高斯**（`GlassBlur.shader`，RT→RT Blit 常规路径，非帧缓冲拷贝——不踩 GLES
+黑帧坑）产出 `_GlassBlur`；失败时退化为采样原始半分辨率 RT。
+
+**④ UIGlass / UIManager**：
+- `UseLiquid()` 全参数入口；`UseRefraction/UseBlur` 变为参考质感预设（旧签名不变，
+  SpinPad 等调用点零改动）——控件 frost 0.36 / 拉丝 44px，大面板 frost 随参数 / 拉丝 90px；
+- `AttachShadow()`：稍大、下移的软边圆角矩形插到元素正后方（同父层级，随面板 CanvasGroup
+  一起淡入淡出）——所有按钮、设置/重打/加塞面板、力度胶囊挂上软投影；
+- 独立淡入淡出的中央提示胶囊/147 横幅不加投影（影子不会跟着消失）。
+
+**回归：规则 58/58；编辑器截图 11 帧（ShotTest）确认磨砂/拉丝/投影成型；真机实测观感正常。**
+
+**MuMu 环境差异（踩坑 43）**：本版玻璃在 MuMu GLES3 上除自带 CanvasGroup 的元素
+（中央提示胶囊/各大面板）外**多数不渲染**（按钮/顶条/加塞盘整块消失，且与
+CanvasGroup/UIJelly/参数无关——三组对照实验逐一排除），而**真机无异常**。沿用 v0.44
+结论的加重版：**玻璃效果一律以编辑器截图 + 真机为准，MuMu 不作为玻璃验收环境**；
+定位手段=shader 临时输出顶点色（踩坑 39 方法），诊断后已还原。
+
+### v0.46（第 46 次迭代）—— 碰撞/击球音效（响度音调随速度）
+
+新增三类音效，均按撞击速度实时变化：
+
+| 音效 | 触发点 | 声学特征 |
+|---|---|---|
+| 击球"嗒" | `GameManager.Shoot` 出杆瞬间 | 皮革杆头敲酚醛球：低频闷响+中频敲击+噪声瞬态 |
+| 球碰球"咔" | `BallController.OnCollisionEnter`（撞到球） | 清脆高频 click（3.2/5.6/8.4kHz 三段快速衰减） |
+| 球碰库"噗" | 同上（撞到库边/颚部/袋衬/地板） | 包呢库边低频闷响 + 台呢摩擦噪声 |
+
+- **力度/速度区分**：响度随法向撞击速度幂函数增长（球碰球 0.6 次幂、库边 0.7 次幂，
+  中低速已明显可辨）；音调随速度升高（硬碰撞激发高频振型更多，听感更"亮"）；
+  叠加 ±2% 音调抖动 + 每类 3 个合成变体随机挑选，避免同一波形连放的"机枪感"。
+- **速度取接触法线方向相对速度**：掠射轻擦声音小、正撞响亮；不用 `contacts[].normal`
+  的符号（各平台歧义，见 CushionSpin 注释），音效只取 Dot 绝对值。
+- **节流与防双响**：同类音效最小间隔 25~50ms（开球一帧内十几颗球互撞不挤成噪声）；
+  球-球双方都收到碰撞回调，按实例 ID 只让一方出声；10 路轮转音源池允许重叠余音。
+- **轻触门槛**：法向速度 <0.12/0.15 m/s（球碰球/碰库）不出声，静置贴球与接触抖动无声。
+- **资产路线**：音效由 `tools\make_audio.py` 程序化合成（阻尼正弦+低通噪声，可复现），
+  以 WAV 预导入 `Assets\Resources\Audio\` —— **不做运行时 AudioClip.Create**
+  （踩坑 25：运行时创建的资源在真机不可靠）；2D 播放（spatialBlend=0），响度只由
+  撞击速度决定，不随机相机机位漂移。
+- **设置面板第五行「音效」**：开/关即时生效，PlayerPrefs 持久化（键 `snk_sfx`）；
+  行距 125→105 压缩排版，面板尺寸不变。
+- **顺带修正**：`tools\sync.bat` 在 Git Bash 下执行需 `cmd //c "E:\Snooker\tools\sync.bat"`
+  （绝对路径）；带 `MSYS_NO_PATHCONV=1` 跑它会让 cmd 进交互模式、bat 不执行（踩坑 41 实测复现）。
+
+**回归：规则 58/58、开球、库边 3/3、加塞 ALL SPIN OK、袋口 6/6；日志确认 SFX 加载 3/3/3 并随出杆触发。**
 
 ### v0.45（第 45 次迭代）—— 犯规选择权门禁 + iOS 液态玻璃 UI 全面重做
 

@@ -211,6 +211,10 @@ public class Bootstrapper : MonoBehaviour
         gm.cueCtl = cc;                             // 先互相注入再 Build（Build 里要用到 cc）
         ui.Build();
 
+        // v0.46：音效（AudioListener 已挂在主相机上）。在 GameSettings.Load 之前创建没问题——
+        // 播放只发生在对局中，届时设置已就绪；Sfx 内部读 GameSettings.SfxOn 决定是否出声。
+        Sfx.Init(transform);
+
         // 用户设置最后应用（帧率/分辨率/阴影），覆盖上方的占位与默认画质
         GameSettings.CaptureNative();
         GameSettings.Load();

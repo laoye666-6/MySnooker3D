@@ -7,12 +7,9 @@
 // 路径。本组件用 OnPopulateMesh 直接生成圆角矩形/胶囊/圆形/描边环的顶点网格，
 // **零贴图、零纹理采样**，与纯色块完全同一条渲染路径，把真机风险压到最低。
 //
-// 液态玻璃质感 = 分层叠加（由 UIManager 组装）：
-//   半透明淡彩主体(本组件) + 顶部高光条 + 亮色描边环(本组件 Ring 模式) + 文字(IMGUI)。
-// 「与背景交互」分两档：
-//   - 游戏内 HUD：只用半透明（场景透过玻璃变色，零额外开销）；
-//   - 菜单期大面板：UseBlur() 换用 LiquidGlass.shader（GrabPass 抓背景 → 模糊+调色）。
-//     全屏拷贝有带宽成本，故只给主菜单底/设置面板/结算面板用，游戏内一律不用。
+// 液态玻璃质感（v0.47 参考稿）= 重磨砂 + 边缘透镜拉丝（LiquidGlass.shader 的 SDF 光学）
+//   + 顶部高光条 + 亮色描边环(本组件 Ring 模式) + 软投影(AttachShadow) + 文字(IMGUI)。
+// 「与背景交互」全部走 GlassSceneCamera 的双 RT：_GlassScene(半分辨率清晰) / _GlassBlur(四分辨率磨砂)。
 //
 // 注意：CanvasGroup 的整体淡入淡出（菜单/结算/HUD）通过 CanvasRenderer 继承 alpha
 // 实现，对本组件同样生效；Button 的 pressedColor 变色也以本组件为 targetGraphic。
@@ -72,42 +69,100 @@ public class UIGlass : MaskableGraphic
         return g;
     }
 
-    /// 磨砂玻璃（大面板）：_Blur 调大做磨砂，折射收敛防全屏鱼眼，光晕中等。
+    /// 磨砂玻璃（大面板）：重磨砂 + 长跨度边缘拉丝（v0.47 参考质感；
+    /// 参考图的大面板拖影约占高度 15~25%，故 streak/lens 给到大值）。
     public void UseBlur(float blur = 14f, float frost = 0.14f, float lift = 0.10f, float crisp = 0.35f)
     {
-        var m = MakeGlassMaterial();
-        if (m == null) return;
-        m.SetFloat("_Blur", blur);
-        m.SetFloat("_Frost", frost);
-        m.SetFloat("_Lift", lift);
-        m.SetFloat("_Crisp", crisp);
-        m.SetFloat("_Refr", 4f);
-        m.SetFloat("_Bulge", 0.6f);
-        m.SetFloat("_SpecInt", 0.4f);
-        m.SetFloat("_EdgeAlpha", 0.28f);
-        m.SetFloat("_Glow", 0.35f);
-        material = m;
+        UseLiquid(frost, crisp * 0.3f, 5f, 0.7f, 36f, 90f, 40f, 3f,
+                  0.20f, 0.10f, 0.30f, 0.12f, 0.30f, 0.32f, 0.10f);
     }
 
-    /// 清澈水玻璃（v0.44f，按钮/胶囊/圆点）：折射强、模糊小、清晰占比高，
-    /// 外加三盏游动光源的实时光晕（_Glow）与镜面反射（_SpecInt）。
-    /// 全部实时取自 GlassSceneCamera 的场景纹理，按钮移动/背景滚动实时跟随。
+    /// 清澈水玻璃（按钮/胶囊/圆点）：v0.47 起映射到参考质感的控件预设——
+    /// 保留旧签名（SpinPad 等调用点不用改），折射/清晰度收敛、磨砂与边缘拉丝成为主导。
     public void UseRefraction(float blur = 1.5f, float refr = 22f, float bulge = 1.4f,
                               float spec = 1.0f, float edgeAlpha = 0.6f, float crisp = 0.55f,
                               float glow = 0.55f)
     {
+        UseLiquid(0.36f, crisp * 0.35f, refr * 0.55f, bulge, 34f, 44f, 26f, 2f,
+                  0.28f, 0.12f, 0.32f, 0.10f, spec * 0.4f, edgeAlpha, 0.18f);
+    }
+
+    /// <summary>
+    /// v0.47 参考质感的完整参数面板（所有 LiquidGlass 元素的底层入口）：
+    ///   frost  奶白磨砂（0=清透 1=全白）  crisp 清晰场景混入  refr/bulge 穹顶折射
+    ///   lens   边缘法向透镜（px，把界外背景拉进来）  streak 边缘切向拉丝（px）
+    ///   edgeW  边缘效果带宽（px）  blurTexels 磨砂源上的小核模糊（blur-RT texel）
+    ///   sheen  顶部内侧受光高光  innerSh 底部内侧厚度阴影  rim 最边缘细亮边
+    ///   edgeDark 边缘轻收暗（亮背景可读性）  spec 镜面高光  edgeAlpha 边缘 alpha 抬升
+    ///   glow   三盏游动光源强度（v0.47 调低作点缀）
+    /// </summary>
+    public void UseLiquid(float frost, float crisp, float refr, float bulge,
+                          float lens, float streak, float edgeW, float blurTexels,
+                          float sheen, float innerSh, float rim, float edgeDark,
+                          float spec, float edgeAlpha, float glow)
+    {
         var m = MakeGlassMaterial();
         if (m == null) return;
-        m.SetFloat("_Blur", blur);
-        m.SetFloat("_Frost", 0.10f);
-        m.SetFloat("_Lift", 0.08f);
+        m.SetFloat("_BlurTexels", blurTexels);
+        m.SetFloat("_Frost", frost);
+        m.SetFloat("_Lift", 0.10f);                     // v0.47：整体提亮固定档（参考稿奶白感）
         m.SetFloat("_Crisp", crisp);
         m.SetFloat("_Refr", refr);
         m.SetFloat("_Bulge", bulge);
+        m.SetFloat("_Lens", lens);
+        m.SetFloat("_Streak", streak);
+        m.SetFloat("_EdgeW", edgeW);
+        m.SetFloat("_Sheen", sheen);
+        m.SetFloat("_InnerSh", innerSh);
+        m.SetFloat("_Rim", rim);
+        m.SetFloat("_EdgeDark", edgeDark);
         m.SetFloat("_SpecInt", spec);
         m.SetFloat("_EdgeAlpha", edgeAlpha);
         m.SetFloat("_Glow", glow);
         material = m;
+    }
+
+    /// <summary>
+    /// v0.47 软边模式（投影专用）：不采场景，颜色=顶点色，
+    /// alpha 从中心实体向网格边缘在 fade(px) 内平滑淡出。
+    /// </summary>
+    public void UseShadow(float fade = 16f)
+    {
+        var m = MakeGlassMaterial();
+        if (m == null) return;
+        m.SetFloat("_SoftMode", 1f);
+        m.SetFloat("_SoftFade", fade);
+        material = m;
+    }
+
+    /// <summary>
+    /// v0.47：给玻璃元素加软投影（参考图药丸下方的柔和落影）。
+    /// 生成一个稍大、下移的玻璃形状插到本元素【正后方】（同父层级），
+    /// 用 _SoftMode 软边模式实现中心实、边缘淡出的柔影。
+    /// 注意：挂在带 CanvasGroup 的面板下时会一起淡入淡出；自身独立淡入淡出的
+    /// 元素（中央提示胶囊等）不要加，否则影子不会跟着消失。
+    /// </summary>
+    public UIGlass AttachShadow(float expand = 10f, float offsetY = -5f,
+                                float alpha = 0.20f, float fade = 16f)
+    {
+        var rt = transform as RectTransform;
+        if (rt == null || transform.parent == null) return null;
+        var go = new GameObject(gameObject.name + "Shadow",
+                                typeof(RectTransform), typeof(CanvasRenderer), typeof(UIGlass));
+        var srt = (RectTransform)go.transform;
+        srt.SetParent(transform.parent, false);
+        srt.anchorMin = srt.anchorMax = rt.anchorMin;
+        srt.anchoredPosition = rt.anchoredPosition + new Vector2(0f, offsetY);
+        srt.sizeDelta = rt.sizeDelta + new Vector2(expand, expand);
+        srt.SetSiblingIndex(rt.GetSiblingIndex());      // 插到本元素之前 → 渲染在其下方
+        var g = go.GetComponent<UIGlass>();
+        g.shape = shape == Shape.Ring ? Shape.RoundedRect : shape;
+        g.cornerRadius = cornerRadius + expand * 0.5f;
+        g.sheen = 0f;                                   // 投影不需要顶点渐变
+        g.color = new Color(0.05f, 0.07f, 0.10f, alpha);
+        g.raycastTarget = false;
+        g.UseShadow(fade);
+        return g;
     }
 
     private static Material MakeGlassMaterial()
@@ -127,6 +182,16 @@ public class UIGlass : MaskableGraphic
         Rect r = GetPixelAdjustedRect();
         if (r.width < 1f || r.height < 1f) return;           // 退化矩形（如力值 0 时的滑条填充）不生成网格
         float halfMin = Mathf.Min(r.width, r.height) * 0.5f;
+        // v0.47：把几何信息推给 LiquidGlass 的圆角矩形 SDF（材质是每元素独立实例；
+        // 滑条填充等每帧变尺寸的元素随重建刷新）。坐标用画布单位，与 _EdgeW 等参数同尺度。
+        if (material != null && material.HasProperty("_RectHW"))
+        {
+            float rad = (shape == Shape.Capsule || shape == Shape.Circle)
+                ? halfMin
+                : Mathf.Min(cornerRadius, halfMin);
+            material.SetVector("_RectHW", new Vector4(r.width * 0.5f, r.height * 0.5f, 0f, 0f));
+            material.SetFloat("_CornerR", rad);
+        }
         Color cTop = Color.Lerp(color, Color.white, sheen);
         Color cBot = Color.Lerp(color, Color.black, sheen * 0.6f);
 

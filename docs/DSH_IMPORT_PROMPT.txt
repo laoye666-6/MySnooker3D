@@ -1,36 +1,45 @@
 【项目上下文导入 —— 双人斯诺克 3D（Unity / Blender / MuMu / GitHub）】
 
 我正在开发一个已基本完成并已开源的项目，以下是压缩上下文，请记住并在后续工作中使用。
-更完整的细节（逐条踩坑 38 条、完整版本史、全部命令）见同目录 CONTEXT_SUMMARY.md 与 E:\Snooker\README.md。
+更完整的细节（逐条踩坑 41 条、完整版本史、全部命令）见同目录 CONTEXT_SUMMARY.md 与 E:\Snooker\README.md。
 
 ■ 项目：安卓双人同屏斯诺克游戏 —— 完整官方斯诺克规则、真实物理（含袋口）、可开关辅助瞄准线、
-  贝塞尔入场运镜、设置界面（帧率/分辨率/阴影/物理步长）、单杆分 HUD、147 提示、加塞杆法
+  贝塞尔入场运镜、设置界面（帧率/分辨率/阴影/物理步长）、单杆分 HUD、147 提示、加塞杆法、
+  **iOS 液态玻璃 UI（清澈折射/反射/游动光源光晕/按钮 Q 弹/触感反馈）**
 ■ 技术栈：Unity 2022.3.62f3c1（IL2CPP，ARM64+X86_64）+ Blender 5.2 脚本化建模 + MuMu 模拟器实测
-■ 当前版本：v0.43（第 43 次迭代）；APK：E:\Snooker3D\Builds\Snooker3D.apk
-■ 已开源：https://github.com/laoye666-6/MySnooker3D （public / MIT，Release v0.43 已带 APK）
+■ 当前版本：v0.48（第 48 次迭代）；APK：E:\Snooker3D\Builds\Snooker3D.apk
+■ 已开源：https://github.com/laoye666-6/MySnooker3D （public / MIT，Release v0.45 已带 APK）
 
 ■ 路径（全部实测有效）
-- 源码母本（权威）：E:\Snooker\unity_src\Scripts（11 个 cs）+ unity_src\Editor（4 个）
+- 源码母本（权威）：E:\Snooker\unity_src\Scripts（16 个 cs）+ unity_src\Editor（4 个）
+- 另有母本：E:\Snooker\shaders\LiquidGlass.shader、E:\Snooker\android\AndroidManifest.xml
+  （sync.bat 只同步 *.cs → 这两个要手工拷入工程 Assets\Resources\Shaders\ 与 Assets\Plugins\Android\）
 - Unity 工程：E:\Snooker3D（Assets\Scripts 由 sync.bat 从母本镜像同步）
 - 开源仓库：E:\Snooker\MySnooker3D（UnityProject\ 是仓库内工程；docs\DEVELOPMENT.md 是详细开发文档）
-- 文档：E:\Snooker\README.md（踩坑 + 版本记录）、CONTEXT_SUMMARY.md、本文件
+- 文档：E:\Snooker\README.md（踩坑 41 条 + 版本记录）、CONTEXT_SUMMARY.md、本文件
 - Unity：E:\Program files\2022.3.62f3c1\Editor\Unity.exe；Blender：D:\Program Files\STEAM\...\blender.exe
 - MuMu adb：E:\Program files\Netease\MuMu\nx_main\adb.exe，目标 127.0.0.1:16384
 - 日志：E:\Snooker\logs\；截图：E:\Snooker\shots\（编辑器截图 shots\editor\）
 - 本机 Bash 是 Git Bash：路径写 /e/Snooker；跑 .bat 用 cmd //c "tools\sync.bat"
-  注意：Git Bash 会把 /MIR、/c 这类参数当路径改写 → robocopy/adb 前先 export MSYS_NO_PATHCONV=1
+  注意：Git Bash 会把 /MIR、/c 这类参数当路径改写 → robocopy/adb 前先 export MSYS_NO_PATHCONV=1；
+  但**跑 .bat 时不要带该变量**（会把 cmd //c 的转换也禁掉，cmd 进交互模式、bat 根本不执行）
 
 ■ 架构（三层分离，务必维持）
 - SnookerRules.cs = 纯函数规则引擎（TableState + ShotFacts → ShotOutcome，不碰物理/UI）
-- GameManager.cs = 规则落地（加分/回点/换手/终局）+ 几何判定 IsSnookered()/BallsOn() + 球在手 DragCueBall()
+- GameManager.cs = 规则落地（加分/回点/换手/终局）+ 几何判定 IsSnookered()/BallsOn()
+  + 球在手 DragCueBall() + ChoicePending（Miss 选框未处理时锁定击球，v0.45）
 - Editor：
   · RuleTest.cs —— 58 条规则断言（不走物理、不需模拟器）
   · PhysTest.cs —— 四个入口：Run 开球 / CushionTest 库边 / SpinTest 加塞 / PocketTest 袋口
   · BuildGame.cs —— 命令行构建（版本号在此改）
-  · ShotTest.cs —— 编辑器内自动截图驱动（11 张，含袋口特写）
-- 其余：G.cs(常量) Bootstrapper(自建场景+球桌碰撞体) BallController(球+白球自旋模型+袋口防弹射)
-  CueController(瞄准/出杆/加塞状态/拖球/微调步长) AimLine(辅助线+指定彩球) SpinPad(加塞圆盘)
-  GameCamera(运镜) UIManager(uGUI+IMGUI) GameSettings(帧率/分辨率/阴影/物理步长)
+  · ShotTest.cs —— 编辑器内自动截图驱动（11 张，含袋口特写；时间线开头强制物理步长回 2ms）
+- 其余：G.cs(常量) Bootstrapper(自建场景+球桌碰撞体+GlassSceneCamera 挂载)
+  BallController(球+白球自旋模型+袋口防弹射+碰撞音效上报) CueController(瞄准/出杆/加塞/拖球/微调)
+  AimLine(辅助线+指定彩球) SpinPad(加塞圆盘) GameCamera(运镜)
+  UIManager(uGUI+IMGUI+字号常量阶梯 FontXxx) GameSettings(设置持久化)
+  UIGlass(液态玻璃零贴图顶点网格) UIJelly(按钮 Q 弹弹簧) Haptics(触感反馈)
+  GlassSceneCamera(副相机：每帧把场景绘到半分辨率 RT 供玻璃折射/光晕采样，隔帧渲染)
+  Sfx(碰撞/击球音效：响度音调随速度；v0.46)
 
 ■ 物理要点（容易改错，改动前必读）
 1. 白球自旋（加塞）**不能靠 PhysX**，是 BallController 里自建的滑移摩擦模型（CueRollStep）；
@@ -44,53 +53,82 @@
 6. **袋口（v0.41 重做）四条硬约束**（详见 CONTEXT_SUMMARY 第六节）：
    ① 颚部是圆弧且与库边鼻线**相切**（相切 → 开口宽度不变 → 手感不回归）；
    ② 台面挖真洞（127 块 BoxCollider 拼成），洞口阶梯边缘会抛起高速球 → PocketLaunchGuard 钳掉向上分量；
-   ③ 袋内衬 30mm 厚环墙、**开口侧低(-0.015)/后侧高(+0.045)**（低墙兜不住快球、高墙绕整圈会挡贴库球，
-      只有这个形状能同时满足）；内径 ≥ 洞口半径+球半径+余量（取 洞口+36mm），否则球一进袋口就嵌进衬壁被崩飞；
-   ④ 落袋判据 G.InPocket 必须"球一进洞口就成立"，不能等掉到某个深度
-      （高速球在那之前已横移 0.29m，会撞袋壁/拼缝被顶飞出台面）。
+   ③ 袋内衬 30mm 厚环墙、**开口侧低(-0.015)/后侧高(+0.045)**；内径 ≥ 洞口+36mm，否则嵌进衬壁被崩飞；
+   ④ 落袋判据 G.InPocket 必须"球一进洞口就成立"，不能等掉到某个深度。
 
-■ 规则要点（v0.42/v0.43 两条真 bug 的教训）
+■ 液态玻璃要点（v0.47 重做，改动前必读）
+1. UIGlass = 零贴图顶点网格（圆角/胶囊/圆形/描边环），与纯色块同渲染路径——**真机 UI 禁用
+   运行时贴图**（Sprite.Create/Texture2D 曾整块不渲染，踩坑 25）；网格 uv0 写入 [-1,1] 局部坐标，
+   并在 OnPopulateMesh 把 _RectHW/_CornerR 推给 shader（圆角矩形 SDF 用，滑条等变尺寸元素随重建刷新）。
+2. LiquidGlass.shader（v0.47 重写）：**重磨砂 + 边缘拉丝**的厚玻璃板质感——
+   主体采 _GlassBlur（四分辨率+两轮分离高斯，GlassSceneCamera 用 GlassBlur.shader 产出），
+   边缘 = 法向透镜（lens·band² 把界外内容拉进来）+ 切向拉丝（streak·band² 拖影，
+   大面板 90px / 控件 44px）+ 顶部 sheen + 底部厚度阴影 + rim 细亮边 + 奶白 frost 提亮。
+   _SoftMode 分支 = 纯色软边（专用于 AttachShadow 软投影）。
+3. 场景源 = GlassSceneCamera（挂主相机的子相机，隔帧绘半分辨率 RT）。
+   **场景采样三方案（GrabPass/相机命令缓冲/OnRenderImage）在 MuMu GLES3 上均间歇黑帧，
+   编辑器 D3D11 全部正常——多相机渲染 + RT→RT Blit 是唯一确定性方案，别再试前三条路。**
+4. **GLES 铁律：shader 里所有 pow() 底数必须 max(…,1e-4)**——pow(0,k) 部分驱动返回 NaN，
+   曾把整片玻璃中心染黑（编辑器正常极具迷惑性；用"直接输出顶点色"的诊断构建定位）。
+5. **踩坑 42：Fallback 会静默吞 shader 编译错误**——v0.44~45 的 shader 引用未定义变量
+   编译失败，被 Fallback 平色掩盖两版。改 shader 后必须确认 Console 无 "Shader error"。
+6. **踩坑 43：MuMu GLES3 不渲染多数玻璃元素（自带 CanvasGroup 的例外），真机正常**
+   → 玻璃验收 = 编辑器截图（ShotTest）+ 真机，MuMu 不作数；定位手段 = shader 临时
+   直接输出顶点色（踩坑 39 方法），验完立即还原。
+6. 参数入口 = UIGlass.UseLiquid()（全参）；UseRefraction（控件预设：frost 0.36/拉丝 44px）与
+   UseBlur（大面板预设：拉丝 90px）为映射，旧签名未变；游灯光源 _Glow 降为点缀（0.18/0.10）。
+7. 软投影 = UIGlass.AttachShadow()（插元素正后方，随面板 CanvasGroup 淡入淡出）；
+   独立淡入淡出的元素（中央提示胶囊/147 横幅）不要加投影。
+8. 按钮交互 = UIJelly（按下压扁/松手欠阻尼过冲回弹，双轴刚度差=果冻扭动）
+   + Haptics（按下轻点 12ms、主按钮确认 24ms；AndroidManifest 需 VIBRATE 权限）。
+9. 字号一律引用 UIManager 的 FontXxx 常量阶梯（76/64/56/46/42/40/34/32/30/28/26），禁写字面量。
+10. 设置弹窗：全屏暗色磨砂层（SettingsBlurBg）随 settingsCG 淡入 = 背景逐渐高斯模糊。
+
+■ 规则要点（v0.42~v0.45 真 bug 的教训）
 1. 规则改动**必须**走 SnookerRules.cs + RuleTest 断言，不许把判定写进物理/UI 代码。
-2. **读规则要逐字读动词**：WPBSA Section 3 Rule 3(h)(ii) 的 "a colour has been **played at**"
-   只要求"击打过"、不要求打进 → 阶段切换与是否进球无关。旧版按"打进"切换，清彩阶段因此混乱。
+2. **读规则要逐字读动词**：3(h)(ii) "a colour has been **played at**" 只要求"击打过"；
    played / potted / struck 是三种不同条件。
-3. **"任选彩球"必须按【指定】的那颗计分**（3(h)(i) "which, if potted, is scored"）；
-   旧版无条件按进袋球加分 → "指定蓝球进绿球"被算成合法 3 分（应罚 5 分 + 回点）。
-4. 条款号要按**当前规则书年份**核对：2024-25 版是 Section 3 Rule 3(g)/(h)、Section 2 Rule 11；
-   旧编号 3(e)/3(f)(ii)/10.3 不存在。
+3. **"任选彩球"必须按【指定】的那颗计分**（3(h)(i) "which, if potted, is scored"）。
+4. 条款号按 2024-25 版核对：球 on 顺序 = Section 3 Rule 3(g)/(h)；ball on 定义 = Section 2 Rule 11；
+   指定球 = Section 2 Rule 12；罚分 = Section 3 Rule 11；犯规判定 = Rule 10；Miss = Rule 14；
+   自由球 = Rule 12；旧编号 3(e)/3(f)(ii)/10.3 不存在。
+5. **Miss 选框未做出选择前禁止击球**（v0.45 修复）：Rule 14(b) 的选择权必须先于下一杆行使、
+   Rule 13 选择一经提出不可撤回。门禁 = GameManager.ChoicePending（BeginStrike/Shoot 拒绝）
+   + 选框全屏透明挡板。Rule 14(b) 三选项中"原始位置重打"为简化未实现（沿用标注）。
 
-■ 关键约束（踩坑精华，共 38 条详见 README）
+■ 关键约束（踩坑精华，共 41 条详见 README）
 1. MuMu 只认 arm64/x86_64 → 必须 IL2CPP；必须关闭引擎裁剪（stripEngineCode=false + link.xml）
 2. 工程物理资产 m_SimulationMode 必须为 0；测试代码必须 try/finally 恢复（曾导致真机物理全冻）
 3. uGUI 动态字体在部分机渲染空白 → 文字一律 IMGUI + 内嵌 DroidSansFallback
 4. uGUI 中心锚定 y 向上 vs 设计坐标 y 向下：pos.y = 540 - 设计y；IMGUI CRect 的 cx 是中心不是边缘
-5. **运行时创建的 UI 图形在真机不可靠**：Sprite.Create / new Texture2D 编辑器正常、真机不渲染
-   → UI 图形优先用纯色块或内建资源
+5. **运行时创建的 UI 贴图在真机不可靠**（Sprite.Create/Texture2D/PNG）→ 玻璃用顶点网格（UIGlass）
 6. **不要在编辑器里调 Screen.SetResolution**（会卡死播放模式）；ShotTest 不能加 -quit/-batchmode，
-   且跑时必须让 Unity 窗口保持前台（否则 GUI 白屏、协程不推进）
-7. **编辑器测试与 APK 构建不可并行**（报 HandleProjectAlreadyOpenInAnotherInstance 并崩溃，
-   需手工删 Temp/UnityLockfile）
+   且跑时必须让 Unity 窗口保持前台（建议再用 SetWindowPos HWND_TOPMOST 钉住）
+7. **编辑器测试与 APK 构建不可并行**（HandleProjectAlreadyOpenInAnotherInstance，删 Temp/UnityLockfile）
 8. **推送前必须先 git fetch**（曾 force push 覆盖用户网页编辑的提交）；
-   `gh release create` 偶发把 release 建成 Draft 且**不附 APK** → 必须 `release view` 核对 assets，
+   `gh release create` 偶发建成 Draft 且不附 APK → 必须 `release view` 核对，
    必要时 `release upload` + `release edit --draft=false`
-9. 含中文的 .bat 在 GBK 控制台闪退 → 批处理保持纯 ASCII；PowerShell 调 gh 的 --jq 含引号会报错，用 --template
-10. 本机 github.com 偶发不通（git tag push 会失败），但 **gh CLI 走另一条通道常可用**
-    → 可用 `gh api repos/.../git/refs -f ref=refs/tags/vX -f sha=<sha>` 建 tag 兜底
-11. 跑完 ShotTest 后编辑器会残留"无标题空场景"，下次启动按 Play 只有天空盒
-    → 双击 Assets/Scenes/Main.unity 打开正确场景即可
+9. 含中文的 .bat 在 GBK 控制台闪退 → 批处理保持纯 ASCII；PowerShell 调 gh 用 --template 不用 --jq
+10. 本机 github.com 偶发不通，gh CLI 常可用（用户开代理后 git push 亦正常）；失败先重试
+11. 跑完 ShotTest 残留"无标题空场景" → 双击 Assets/Scenes/Main.unity 即可
+12. **ShotTest 会把物理步长 0.5ms 持久化** → 下一轮编辑器 2000Hz 启动、首帧慢如卡死；
+    已修（时间线开头回 2ms + Save + 150s 看门狗）；编辑器 PlayerPrefs 在注册表
+    HKCU\Software\Unity\UnityEditor\SnookerLab\Snooker3D（键名为哈希形式）
+13. **编辑器播放模式间歇白屏卡死**（协程全灭、无产出）→ 杀进程删锁重试，多数第二次即过；
+    启动后立即 HWND_TOPMOST 钉窗可大幅减少
 
 ■ 常用命令
 :: 同步母本 → 工程
 cmd //c E:\Snooker\tools\sync.bat
-:: 全量回归（串行跑 5 道；Unity 工程锁是独占的，不能并行；期望全绿）
+:: 全量回归（串行跑 5 道；Unity 工程锁独占，不能并行；期望全绿）
 bash E:\Snooker\tools\regress.sh
 :: 单独跑（RuleTest 可加 -nographics；PhysTest 系不能加，需要图形设备）
   -executeMethod RuleTest.Run        期望 PASS=58 FAIL=0 + ALL RULES OK
   -executeMethod PhysTest.Run / CushionTest（3 个 bounced=True）/ SpinTest（ALL SPIN OK）/ PocketTest（PASS=6 FAIL=0）
-:: 构建（-x86only 只编 x86_64，调试快；正式版双架构；IL2CPP 全量 40~60 分钟，纯资产增量约 3~7 分钟）
+:: 构建（-x86only 只编 x86_64 调试快；正式版双架构；全量 40~60 分钟，增量约 3~7 分钟）
 "E:\Program files\2022.3.62f3c1\Editor\Unity.exe" -batchmode -quit -nographics ^
   -projectPath "E:\Snooker3D" -executeMethod BuildGame.BuildAndroid -logFile "E:\Snooker\logs\build.log"
-:: 编辑器自动截图（带窗口，不加 -quit/-batchmode，跑时保持前台）
+:: 编辑器自动截图（带窗口，不加 -quit/-batchmode，跑时保持前台+TOPMOST 钉窗）
   -executeMethod ShotTest.Run → shots\editor\*.png（11 张，含袋口特写）
 :: 袋口外观改动的离线校验（Blender 出三张特写）
   blender.exe -b -P E:\Snooker\blender\render_pockets.py → shots\pocketrender_*.png
@@ -99,32 +137,39 @@ bash E:\Snooker\tools\regress.sh
   adb -s 127.0.0.1:16384 install -r -t E:/Snooker3D/Builds/Snooker3D.apk
   adb -s 127.0.0.1:16384 shell screencap -p /sdcard/a.png && adb pull /sdcard/a.png 本地路径
 
-■ 辅助脚本（E:\Snooker\tools\，v0.41 起新增，用于"看不到/点不到 Unity"时）
+■ 辅助脚本（E:\Snooker\tools\，用于"看不到/点不到 Unity"时）
 - focus_and_shot.ps1  把 Unity 窗口提到前台并整屏截图（-Hwnd 指定窗口）
-- crop_shot.ps1       裁剪并放大截图局部（读图辨认 UI 细节）
+- crop_shot.ps1       裁剪并放大截图局部（-In -Out -X -Y -W -H -Scale）
 - click.ps1 / sendkeys.ps1  指定坐标点击 / 发送按键（GUI 自动化）
 - list_windows.ps1    列出某进程的所有顶层窗口（含是否可见/卡死）—— 排查"窗口不见了"
 
 ■ 工作方式约定（用户明确要求，务必遵守）
 - 每轮给一组编号修改要求 + 指定新版本号；versionName 0.NN = 第 NN 次迭代，versionCode 递增
+  （用户连续多轮未指定版本号时，小迭代可先沿用当前版本号，发版前再问一次）
 - 物理/玩法 bug **先在 Unity 编辑器复现修复、回归通过，再导出 APK** 到 MuMu 验收
-- 中间迭代尽量用编辑器截图（ShotTest）验证，只在最终打磨阶段上 MuMu
+- 中间迭代用编辑器截图（ShotTest）验证即可（用户明确过：无需每轮导入 MuMu，节约时间内存），
+  只在最终打磨/发版阶段上 MuMu
 - 改视觉模型尽量不动 C#（改 Blender 脚本参数）；球体保持哑光（粗糙 0.65 / 金属 0）
 - 源码母本 E:\Snooker\unity_src 必须保留，改动先写母本再 sync
 - 推送前先 fetch；发版流程 = 改母本 → 改 BuildGame 版本号 → 构建 → 同步到 MySnooker3D → 提交推送 → gh release
 - 用户可能在 GitHub 网页直接改 README，故已推送历史尽量不改写
   （v0.42 发完又发现 bug → 不重写 v0.42，直接发 v0.43）
 
-■ 已完成：玩法闭环 + 完整规则（指定彩球/Miss 让对手重打/自由球/清彩阶段）+ 球在手 D 区摆球
-  + 加塞杆法（高杆/低杆/定杆/左右塞）+ 物理步长可调 + 原神风 UI + 运镜 + 设置 + HUD + 147 + 图标
-  + **袋口真实物理（弧形颚部 / 真洞下坠 / 晃袋）**
-■ 未实现（已就地标注）：Miss 累计三次判负（Rule 11(c)(i)）、自由球判定的裁判裁量
+■ 已完成：玩法闭环 + 完整规则（指定彩球/Miss 让对手重打/自由球/清彩阶段/**选择权门禁**）
+  + 球在手 D 区摆球 + 加塞杆法（高/低/定/左右塞）+ 物理步长可调 + 运镜 + 设置 + HUD + 147 + 图标
+  + 袋口真实物理（弧形颚部/真洞下坠/晃袋）+ **iOS 液态玻璃 UI**（清澈折射/反射/游动光源光晕/
+  **按钮 Q 弹**/**触感反馈**/设置背景渐模糊）+ 字号常量阶梯
+■ 未实现（已就地标注）：Miss 累计三次判负（Rule 11(c)(i) 及 14(d)(ii) 警告）、自由球判定的
+  裁判裁量、Miss"原始位置重摆"
 ■ 已取消：入场 CG（Blender 开场动画）—— 用户明确不做
 ■ 已知遗留：
-  - 加塞圆盘的"白球面"是方形（圆形方案在真机始终异常，见约束 5）
+  - 低透明度下按钮本体在木纹亮背景上偏淡（用户明确要透明，可读性靠暗边+折射；平衡点在
+    UIManager 的 GlassXxx 常量）
   - 5m/s 满力正打角袋时球在袋口布料拼缝处弹起约 90mm 后仍进袋（无害，回归红线 0.12m）
   - 球质量 rb.mass=0.17kg 与文献不符（同行评审用 140.6g）；因 a=μg 与质量无关，
     只影响撞球动量分配，未改
+  - 液态玻璃在真机 GLES3 的最终观感待下次装机复核（折射源已改确定性副相机方案，
+    编辑器验证全部通过）
 
 ■ 你需要做的：等我提出下一步需求。若你有本机文件读写权限，可直接改源码/跑命令/构建；
   若无，需要什么内容我会粘贴给你。回答请用中文。

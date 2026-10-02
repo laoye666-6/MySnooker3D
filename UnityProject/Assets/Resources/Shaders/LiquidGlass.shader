@@ -1,40 +1,53 @@
 // =====================================================================================
-// LiquidGlass.shader —— iOS「液态玻璃」清澈折射 + 反射 + 游动光源光晕（v0.44f）
+// LiquidGlass.shader —— iOS 26 风格「液态玻璃」：重磨砂 + 边缘透镜拉丝（v0.47 重写）
 //
-// 场景源：_GlassScene（GlassSceneCamera 副相机每帧渲染的半分辨率场景纹理，
-// 确定性方案——GrabPass/命令缓冲/OnRenderImage 三种帧缓冲拷贝在 MuMu GLES3 上
-// 间歇性黑帧/清屏色，全部弃用，见 GlassSceneCamera.cs 头注释）。
+// 参考质感（DeepSeek 输入框风格的液态玻璃）：
+//   · 透过玻璃的背景被【重度高斯模糊】并整体提亮偏白（奶白磨砂感）；
+//   · 玻璃边界处背景被【挤压+沿边缘方向拉丝】——法向把界外内容"拉进来"，
+//     切向把边缘内容"抹开"，形成边缘一圈流动的光带（厚玻璃边的透镜效应）；
+//   · 顶部内侧一道受光高光、底部内侧一道厚度阴影、最边缘一圈细亮边；
+//   · 中心相对通透（仍能看到模糊后的色块），越靠边变形越强。
 //
-// frag 组成：
-//   1) 玻璃穹顶法线：UIGlass 网格的 uv0 是 [-1,1] 局部坐标，据此生成凸面法线
-//      （中心朝上、边缘外倾，曲率 _Bulge）；
-//   2) 折射：按法线横向偏移采样场景（_Refr 像素）——真正的"透过玻璃看到弯掉的
-//      背景"，每帧实时；清澈感 = 低模糊 + 高清晰占比（_Crisp），水玻璃透而略弯；
-//   3) 反射：菲涅尔边缘亮环 + 左上方向镜面高光；
-//   4) 光晕：三盏程序化"游灯"（不同频率/相位的正弦漂移，伪随机而平滑），
-//      各带暖白/冷蓝/淡金颜色，在玻璃上投出实时移动的光斑（高斯衰减）；
-//   5) 边缘 alpha 随菲涅尔抬升——玻璃边缘密度更高、更"实"，中心保持极透。
+// 场景源（双 RT，GlassSceneCamera 提供）：
+//   _GlassScene —— 半分辨率原始场景（清晰折射层，_Crisp 混入）；
+//   _GlassBlur  —— 四分之一分辨率 + 两轮分离高斯（磨砂主体）。
+//   确定性方案沿用 v0.44 结论：GrabPass/命令缓冲/OnRenderImage 在 MuMu GLES3 上
+//   间歇黑帧，只有"多相机渲染 + RT→RT Blit"可靠。
+//
+// 几何输入：UIGlass 的 uv0 = [-1,1] 矩形局部坐标 + 材质上的 _RectHW(半宽高,px)
+// 与 _CornerR(圆角,px)，fragment 内用圆角矩形 SDF 求到边缘距离/法线/切向
+// （带符号距离场纯解析计算，无纹理、无循环，GLES2/3 都安全）。
 //
 // GLES 铁律：所有 pow() 的底数必须 max(…, 1e-4)——pow(0,k) 在部分 GLES 驱动返回
 // NaN，曾把整片玻璃中心染黑（编辑器 D3D11 正常，极具迷惑性）。
 //
-// 形状（圆角矩形/胶囊/圆形）由 UIGlass 的顶点网格负责。母本在 E:\Snooker\shaders\，
-// sync.bat 只同步 *.cs，需手工拷到 Assets\Resources\Shaders\。
+// 母本在 E:\Snooker\shaders\，sync.bat 只同步 *.cs，需手工拷到 Assets\Resources\Shaders\。
 // =====================================================================================
 Shader "UI/LiquidGlass"
 {
     Properties
     {
         _Color ("Tint", Color) = (1,1,1,1)
-        _Blur ("Blur Radius (texels)", Range(0, 8)) = 2
-        _Frost ("Frost Whiten", Range(0, 1)) = 0.10
-        _Lift ("Brightness Lift", Range(0, 1)) = 0.08
-        _Crisp ("Clear Mix (1=clear)", Range(0, 1)) = 0.55
-        _Refr ("Refraction (texels)", Range(0, 40)) = 20
-        _Bulge ("Dome Bulge", Range(0.1, 3)) = 1.4
-        _SpecInt ("Specular Strength", Range(0, 2)) = 0.9
-        _EdgeAlpha ("Edge Alpha Boost", Range(0, 1)) = 0.55
-        _Glow ("Light Halos Strength", Range(0, 1.5)) = 0.55
+        _BlurTexels ("Extra Blur (blur-RT texels)", Range(0, 8)) = 2
+        _Frost ("Frost Whiten", Range(0, 1)) = 0.30
+        _Lift ("Brightness Lift", Range(0, 1)) = 0.10
+        _Crisp ("Clear Mix (1=clear)", Range(0, 1)) = 0.10
+        _Refr ("Dome Refraction (px)", Range(0, 40)) = 10
+        _Bulge ("Dome Bulge", Range(0.1, 3)) = 1.3
+        _Lens ("Edge Lens (px)", Range(0, 80)) = 30
+        _Streak ("Edge Streak (px)", Range(0, 120)) = 36
+        _EdgeW ("Edge Band (px)", Range(4, 80)) = 24
+        _Sheen ("Top Sheen", Range(0, 1)) = 0.28
+        _InnerSh ("Bottom Inner Shadow", Range(0, 1)) = 0.12
+        _Rim ("Edge Rim Light", Range(0, 1)) = 0.32
+        _EdgeDark ("Edge Darken", Range(0, 1)) = 0.10
+        _SpecInt ("Specular Strength", Range(0, 2)) = 0.45
+        _EdgeAlpha ("Edge Alpha Boost", Range(0, 1)) = 0.50
+        _Glow ("Light Halos Strength", Range(0, 1.5)) = 0.18
+        _SoftMode ("Soft Edge Mode (shadow)", Float) = 0
+        _SoftFade ("Soft Edge Fade (px)", Float) = 16
+        _RectHW ("Rect Half Size (px)", Vector) = (100, 50, 0, 0)
+        _CornerR ("Corner Radius (px)", Float) = 24
         _StencilComp ("Stencil Comparison", Float) = 8
         _Stencil ("Stencil ID", Float) = 0
         _StencilOp ("Stencil Operation", Float) = 0
@@ -65,18 +78,17 @@ Shader "UI/LiquidGlass"
             #pragma target 2.0
             #include "UnityCG.cginc"
 
-            sampler2D _GlassScene;                   // GlassSceneCamera 每帧渲染的场景
+            sampler2D _GlassScene;                  // 半分辨率清晰场景
+            sampler2D _GlassBlur;                   // 四分辨率磨砂场景（两轮分离高斯）
             float4 _GlassScene_TexelSize;
+            float4 _GlassBlur_TexelSize;
             fixed4 _Color;
-            float _Blur;
-            float _Frost;
-            float _Lift;
-            float _Crisp;
-            float _Refr;
-            float _Bulge;
-            float _SpecInt;
-            float _EdgeAlpha;
-            float _Glow;
+            float _BlurTexels, _Frost, _Lift, _Crisp, _Refr, _Bulge;
+            float _Lens, _Streak, _EdgeW, _Sheen, _InnerSh, _Rim, _EdgeDark;
+            float _SpecInt, _EdgeAlpha, _Glow;
+            float _SoftMode, _SoftFade;
+            float4 _RectHW;                         // x=半宽 y=半高（px）
+            float _CornerR;
 
             struct appdata_t { float4 vertex : POSITION; fixed4 color : COLOR; float2 texcoord : TEXCOORD0; };
             struct v2f      { float4 vertex : SV_POSITION; fixed4 color : COLOR;
@@ -88,62 +100,100 @@ Shader "UI/LiquidGlass"
                 o.vertex = UnityObjectToClipPos(v.vertex);
                 o.color = v.color * _Color;
                 o.scr = ComputeScreenPos(o.vertex);
-                o.uv = v.texcoord;                   // UIGlass 网格写入的 [-1,1] 局部坐标
+                o.uv = v.texcoord;                  // [-1,1] 矩形局部坐标
                 return o;
             }
 
-            half3 Tap(float2 uv) { return tex2D(_GlassScene, uv).rgb; }
+            // ---- 圆角矩形 SDF（px 空间；b = 半尺寸 - 圆角）----
+            float SdRBox(float2 q, float2 b, float r)
+            {
+                float2 w = abs(q) - b;
+                return length(max(w, 0.0)) + min(max(w.x, w.y), 0.0) - r;
+            }
 
             fixed4 frag(v2f i) : SV_Target
             {
-                float2 p = i.uv;                                  // [-1,1] 局部坐标
-                float3 n = normalize(float3(p * _Bulge, 1.0));    // 玻璃穹顶法线
-                float fres = pow(max(1.0 - n.z, 1e-4), 1.7);      // 菲涅尔：边缘强
+                float2 q = i.uv * _RectHW;                        // [-1,1] → 像素（各向同性）
+                float2 b = max(_RectHW.xy - _CornerR, float2(0.0, 0.0));
+                float d = SdRBox(q, b, _CornerR);                 // <0 在玻璃内，0 在边缘
 
-                // ---- 折射：采样点沿法线横向偏移，透过玻璃看到弯掉的场景（每帧实时）----
-                float2 base = i.scr.xy / i.scr.w;
-                float2 uv = base + n.xy * _Refr * _GlassScene_TexelSize.xy;
+                // ---- 软边模式（投影专用）：不采场景，中心实、向网格边缘淡出 ----
+                if (_SoftMode > 0.5)
+                {
+                    float a = i.color.a * smoothstep(0.0, max(_SoftFade, 1.0), -d);
+                    return fixed4(i.color.rgb, a);
+                }
 
-                // 小半径 13 点模糊（水玻璃要清澈 _Blur 很小；磨砂面板调大 _Blur）
-                float2 t = _GlassScene_TexelSize.xy * _Blur;
-                half3 c = Tap(uv) * 2.0;
-                c += Tap(uv + float2( t.x,  0.0));
-                c += Tap(uv + float2(-t.x,  0.0));
-                c += Tap(uv + float2( 0.0,  t.y));
-                c += Tap(uv + float2( 0.0, -t.y));
-                c += Tap(uv + t);
-                c += Tap(uv - t);
-                c += Tap(uv + float2( t.x, -t.y));
-                c += Tap(uv + float2(-t.x,  t.y));
-                c += Tap(uv + t * 2.0);
-                c += Tap(uv - t * 2.0);
-                c += Tap(uv + float2( t.x, -t.y) * 2.0);
-                c += Tap(uv + float2(-t.x,  t.y) * 2.0);
-                c *= (1.0 / 14.0);
-                half3 clear = Tap(uv);                // 清晰折射层
+                // ---- 边缘 SDF 法线/切向（数值梯度，SDF 无纹理、代价可忽略）----
+                float e = 1.5;
+                float2 g = float2(SdRBox(q + float2(e, 0), b, _CornerR) - SdRBox(q - float2(e, 0), b, _CornerR),
+                                  SdRBox(q + float2(0, e), b, _CornerR) - SdRBox(q - float2(0, e), b, _CornerR));
+                float2 nrm = normalize(g + float2(1e-5, 1e-5));   // 边缘外法线（px 空间，屏幕对齐）
+                float2 tng = float2(-nrm.y, nrm.x);               // 沿边缘方向
+
+                float band = 1.0 - saturate((-d) / max(_EdgeW, 4.0));  // 1=贴边 → 0=带外
+                float band2 = band * band;
+
+                // ---- 采样偏移：中心穹顶折射 + 边缘法向透镜（把界外内容拉进来）----
+                float3 nd = normalize(float3(i.uv * _Bulge, 1.0));
+                float fres = pow(max(1.0 - nd.z, 1e-4), 1.7);
+                float2 lens = (nd.xy * _Refr + nrm * _Lens * band2);       // px
+                float2 uvS = (i.scr.xy / i.scr.w) + lens * _GlassScene_TexelSize.xy;
+
+                // ---- 磨砂主体：磨砂 RT 上小核 9 点模糊 ----
+                float2 bt = _GlassBlur_TexelSize.xy * _BlurTexels;
+                float2 uvB = (i.scr.xy / i.scr.w) + lens * _GlassBlur_TexelSize.xy;
+                half3 c = tex2D(_GlassBlur, uvB).rgb * 2.0;
+                c += tex2D(_GlassBlur, uvB + float2( bt.x,  0)).rgb;
+                c += tex2D(_GlassBlur, uvB + float2(-bt.x,  0)).rgb;
+                c += tex2D(_GlassBlur, uvB + float2( 0,  bt.y)).rgb;
+                c += tex2D(_GlassBlur, uvB + float2( 0, -bt.y)).rgb;
+                c += tex2D(_GlassBlur, uvB + bt).rgb;
+                c += tex2D(_GlassBlur, uvB - bt).rgb;
+                c += tex2D(_GlassBlur, uvB + float2( bt.x, -bt.y)).rgb;
+                c += tex2D(_GlassBlur, uvB + float2(-bt.x,  bt.y)).rgb;
+                c *= (1.0 / 10.0);
+
+                // ---- 清晰折射层（少量混入，保住"玻璃后面有东西"的通透）----
+                half3 clear = tex2D(_GlassScene, uvS).rgb;
                 c = lerp(c, clear, _Crisp);
 
-                // ---- 三盏游动光源的光晕（程序化漂移 = 伪随机而平滑，全部实时）----
+                // ---- 边缘切向拉丝：沿边缘方向 5 点加权拖影，越贴边越强 ----
+                float span = _Streak * band2;                     // px
+                half3 str = tex2D(_GlassBlur, uvB + tng * (span * -1.0) * _GlassBlur_TexelSize.xy).rgb * 0.14
+                          + tex2D(_GlassBlur, uvB + tng * (span * -0.5) * _GlassBlur_TexelSize.xy).rgb * 0.21
+                          + c * 0.30
+                          + tex2D(_GlassBlur, uvB + tng * (span * 0.5) * _GlassBlur_TexelSize.xy).rgb * 0.21
+                          + tex2D(_GlassBlur, uvB + tng * (span * 1.0) * _GlassBlur_TexelSize.xy).rgb * 0.14;
+                c = lerp(c, str, band2 * 0.9);
+
+                // ---- 三盏游动光源（保留但很淡：给 HUD 一点"活"气）----
                 float2 lp1 = float2(sin(_Time.y * 0.53 + 1.7) * 0.70, cos(_Time.y * 0.41 + 0.3) * 0.55);
                 float2 lp2 = float2(cos(_Time.y * 0.33 + 4.2) * 0.60, sin(_Time.y * 0.61 + 2.9) * 0.60);
                 float2 lp3 = float2(sin(_Time.y * 0.44 + 5.1) * 0.50, sin(_Time.y * 0.37 + 1.2) * 0.65);
-                float d1 = dot(p - lp1, p - lp1);
-                float d2 = dot(p - lp2, p - lp2);
-                float d3 = dot(p - lp3, p - lp3);
-                half3 glow = half3(1.00, 0.93, 0.80) * exp(-d1 * 6.0) * 0.55   // 暖白
-                           + half3(0.72, 0.83, 1.00) * exp(-d2 * 7.0) * 0.40   // 冷蓝
-                           + half3(1.00, 0.88, 0.60) * exp(-d3 * 5.0) * 0.45;  // 淡金
+                float d1 = dot(i.uv - lp1, i.uv - lp1);
+                float d2 = dot(i.uv - lp2, i.uv - lp2);
+                float d3 = dot(i.uv - lp3, i.uv - lp3);
+                half3 glow = half3(1.00, 0.95, 0.86) * exp(-d1 * 6.0) * 0.5
+                           + half3(0.80, 0.88, 1.00) * exp(-d2 * 7.0) * 0.35
+                           + half3(1.00, 0.92, 0.72) * exp(-d3 * 5.0) * 0.4;
                 glow *= _Glow;
 
-                // ---- 合成：场景 × 玻璃色调，霜化，边缘微暗，反射/光晕加亮 ----
+                // ---- 玻璃光学合成 ----
                 half3 col = c * i.color.rgb;
-                col = lerp(col, half3(1, 1, 1), _Frost * 0.5);
-                col *= (1.0 - fres * 0.32);           // 边缘折射微暗（透镜边缘光弯折，暗边让玻璃在亮背景上可读）
-                col += fres * 0.45 + spec + glow;     // 边缘亮环 + 镜面反射 + 光源光晕
+                float lum = dot(col, half3(0.299, 0.587, 0.114));
+                col = lerp(col, half3(lum, lum, lum), 0.22);      // 轻微去饱和（磨砂玻璃的"灰白感"）
+                col = lerp(col, half3(1, 1, 1), _Frost);          // 奶白提亮（磨砂主体）
+                float spec = pow(max(dot(nd, normalize(float3(-0.35, 0.55, 0.75))), 1e-4), 20.0);
+                col += _SpecInt * spec * 0.35 + glow;             // 左上镜面高光 + 游灯光晕
+                col += _Sheen * band2 * saturate(nrm.y * 1.4);    // 顶部内侧受光高光
+                col *= 1.0 - _InnerSh * band * saturate(-nrm.y);  // 底部内侧厚度阴影
+                col *= 1.0 - _EdgeDark * band2;                   // 边缘轻收暗（亮背景上的可读性）
+                col += _Rim * pow(band, 6.0);                     // 最边缘一圈细亮边
                 col = col * (1.0 - _Lift) + _Lift;
 
-                // 边缘更"实"：alpha 随菲涅尔抬升（中心保持极透）
-                float alpha = saturate(i.color.a + fres * _EdgeAlpha);
+                // 边缘更"实"：alpha 随贴边程度抬升
+                float alpha = saturate(i.color.a + _EdgeAlpha * band2);
                 return fixed4(col, alpha);
             }
             ENDCG
