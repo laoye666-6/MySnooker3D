@@ -249,6 +249,11 @@ public class CueController : MonoBehaviour
             gm.ui.ShowMsg("请先选择是否让对手重打", 1.5f);
             return;
         }
+        if (gm.ReplacePending)                            // v0.53：复位对话框待确认时禁止出杆
+        {
+            gm.ui.ShowMsg("请先处理复位确认", 1.5f);
+            return;
+        }
         StartCoroutine(StrikeCo());
     }
 

@@ -31,6 +31,7 @@ Shader "UI/LiquidGlass"
         _BlurTexels ("Extra Blur (blur-RT texels)", Range(0, 8)) = 2
         _Frost ("Frost Whiten", Range(0, 1)) = 0.30
         _Lift ("Brightness Lift", Range(0, 1)) = 0.10
+        _Desat ("Desaturation", Range(0, 1)) = 0.10
         _Crisp ("Clear Mix (1=clear)", Range(0, 1)) = 0.10
         _Refr ("Dome Refraction (px)", Range(0, 40)) = 10
         _Bulge ("Dome Bulge", Range(0.1, 3)) = 1.3
@@ -83,7 +84,7 @@ Shader "UI/LiquidGlass"
             float4 _GlassScene_TexelSize;
             float4 _GlassBlur_TexelSize;
             fixed4 _Color;
-            float _BlurTexels, _Frost, _Lift, _Crisp, _Refr, _Bulge;
+            float _BlurTexels, _Frost, _Lift, _Desat, _Crisp, _Refr, _Bulge;
             float _Lens, _Streak, _EdgeW, _Sheen, _InnerSh, _Rim, _EdgeDark;
             float _SpecInt, _EdgeAlpha, _Glow;
             float _SoftMode, _SoftFade;
@@ -182,14 +183,14 @@ Shader "UI/LiquidGlass"
                 // ---- 玻璃光学合成 ----
                 half3 col = c * i.color.rgb;
                 float lum = dot(col, half3(0.299, 0.587, 0.114));
-                col = lerp(col, half3(lum, lum, lum), 0.22);      // 轻微去饱和（磨砂玻璃的"灰白感"）
+                col = lerp(col, half3(lum, lum, lum), _Desat);    // 去饱和（v0.53：可调，默认调低→更透）
                 col = lerp(col, half3(1, 1, 1), _Frost);          // 奶白提亮（磨砂主体）
                 float spec = pow(max(dot(nd, normalize(float3(-0.35, 0.55, 0.75))), 1e-4), 20.0);
                 col += _SpecInt * spec * 0.35 + glow;             // 左上镜面高光 + 游灯光晕
                 col += _Sheen * band2 * saturate(nrm.y * 1.4);    // 顶部内侧受光高光
                 col *= 1.0 - _InnerSh * band * saturate(-nrm.y);  // 底部内侧厚度阴影
                 col *= 1.0 - _EdgeDark * band2;                   // 边缘轻收暗（亮背景上的可读性）
-                col += _Rim * pow(band, 6.0);                     // 最边缘一圈细亮边
+                col += _Rim * pow(max(band, 1e-4), 6.0);          // 最边缘细亮边（底数钳住：GLES pow(0,k)=NaN）
                 col = col * (1.0 - _Lift) + _Lift;
 
                 // 边缘更"实"：alpha 随贴边程度抬升

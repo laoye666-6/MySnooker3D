@@ -454,6 +454,33 @@ public static class RuleTest
             Check("26.自由球未先碰指定球属犯规", oc.foulPts > 0, "foulPts=" + oc.foulPts + " reason=" + oc.reason);
         }
 
+        // ---- 27. v0.53：Rule 14(b) 处置权 —— 做选择的是【非犯规方】----
+        {
+            Check("27.犯规方为P1时由P2选择(14(b))",
+                  SnookerRules.ReplayChooser(0) == 1, "chooser=" + SnookerRules.ReplayChooser(0));
+            Check("27b.犯规方为P2时由P1选择(14(b))",
+                  SnookerRules.ReplayChooser(1) == 0, "chooser=" + SnookerRules.ReplayChooser(1));
+        }
+
+        // ---- 28. v0.53：三选项枚举语义（当前位置/原始位置/自己击球 互不相同）----
+        {
+            Check("28.三选项取值互异",
+                  SnookerRules.ReplayOption.CurrentPosition != SnookerRules.ReplayOption.OriginalPosition &&
+                  SnookerRules.ReplayOption.OriginalPosition != SnookerRules.ReplayOption.PlaySelf &&
+                  SnookerRules.ReplayOption.CurrentPosition != SnookerRules.ReplayOption.PlaySelf,
+                  "current=" + (int)SnookerRules.ReplayOption.CurrentPosition +
+                  " original=" + (int)SnookerRules.ReplayOption.OriginalPosition +
+                  " self=" + (int)SnookerRules.ReplayOption.PlaySelf);
+        }
+
+        // ---- 29. v0.53：手动复位需【双方都同意】（同意矩阵）----
+        {
+            Check("29.双方同意→通过", SnookerRules.ReplacementApproved(true, true), "T,T");
+            Check("29b.P1不同意→否决", !SnookerRules.ReplacementApproved(false, true), "F,T");
+            Check("29c.P2不同意→否决", !SnookerRules.ReplacementApproved(true, false), "T,F");
+            Check("29d.双方都不同意→否决", !SnookerRules.ReplacementApproved(false, false), "F,F");
+        }
+
         // ---------------- 汇总 ----------------
         Debug.Log("[RULETEST] ===== 结束：PASS=" + pass + "  FAIL=" + fail + " =====");
         foreach (var s in failures) Debug.LogError("[RULETEST] 失败用例: " + s);

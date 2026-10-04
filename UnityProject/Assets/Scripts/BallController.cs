@@ -133,6 +133,25 @@ public class BallController : MonoBehaviour
     }
 
     /// <summary>
+    /// v0.53：把球强制恢复到"某次击球前"的确切位置与落袋状态（复位/原始位置重打用）。
+    /// 与 Place 的区别：不额外抬高（直接写入记录到的世界坐标），且能还原"当时已落袋"的球
+    /// （落袋的球保持隐藏、不参与碰撞）。不启动任何落袋动画，纯状态写入。
+    /// </summary>
+    public void RestoreTo(Vector3 worldPos, bool wasPotted)
+    {
+        StopAllCoroutines();
+        spin = Vector3.zero;
+        rb.velocity = Vector3.zero;
+        rb.angularVelocity = Vector3.zero;
+        potted = wasPotted;
+        rb.detectCollisions = !wasPotted;
+        transform.position = worldPos;
+        rb.position = worldPos;
+        gameObject.SetActive(!wasPotted);
+        if (!wasPotted) rb.WakeUp();
+    }
+
+    /// <summary>
     /// v0.36："球在手"拖动摆放（只在开球区 D 内使用）。
     /// 与 Place 的区别：保留球当前高度、不停协程、不做"复活"处理——
     /// 因为拖动时球本来就在台面上正常参与物理，只是被手指挪了个位置。

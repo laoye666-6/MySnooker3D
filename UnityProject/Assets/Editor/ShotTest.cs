@@ -204,6 +204,26 @@ public class ShotDriver : MonoBehaviour
         yield return Wait(1.60f);                          // ~2.42s：彩纸将尽、比分到位、按钮已可点
         yield return Shot("14_win_settled");
 
+        // ---- ⑪ v0.53：双方同意的复位对话框（玩家1 同意 + 玩家2 不同意，待确认态）----
+        // 直接驱动 UI（绕开 GameManager.OpenReplaceDialog 的"需已有本杆记录"门禁，
+        // 截图只关心版式）；同意状态同时写进 UI 与 GameManager 的镜像字段。
+        gm.StartGame();
+        yield return Wait(0.6f);
+        GameManager.I.ui.ShowReplaceDialog();
+        var uiF = typeof(UIManager).GetField("repP1Agree", BindingFlags.NonPublic | BindingFlags.Instance);
+        if (uiF != null) uiF.SetValue(GameManager.I.ui, true);
+        var uiF2 = typeof(UIManager).GetField("repP2Agree", BindingFlags.NonPublic | BindingFlags.Instance);
+        if (uiF2 != null) uiF2.SetValue(GameManager.I.ui, false);
+        yield return Wait(0.5f);
+        yield return Shot("15_replace_dialog");
+
+        // ---- ⑫ v0.53：Rule 14(b) 三选一选框（判 Miss 后的选择权）----
+        GameManager.I.ui.HideReplaceDialog();
+        yield return Wait(0.4f);
+        GameManager.I.ui.ShowReplayOption();               // 直接弹出选框（真实入口由结算触发）
+        yield return Wait(0.6f);
+        yield return Shot("16_miss_three_options");
+
         Debug.Log("[SHOT] DONE");
         done = true;
         yield return Wait(0.3f);

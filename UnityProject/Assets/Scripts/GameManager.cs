@@ -84,6 +84,24 @@ public class GameManager : MonoBehaviour
     private float rollTimer;             // 本杆已滚动秒数（超 18 秒强制结算，防死等）
     private float shotMaxY;              // 本杆期间所有球心最高高度（诊断用：>0.09 说明球飞起来了）
     private Vector3[] aimSnapshot;       // 进入瞄准时的全部球位快照（防暂停丢位置，见 RestoreSnapshot）
+    // ---- v0.53：击球前完整状态记录（Rule 14(b) 原始位置重打 / 双方同意的复位用）----
+    // 与 aimSnapshot 的区别：aimSnapshot 只存坐标、每次 EnterAim 被覆盖、只用于暂停修复；
+    // shotStart* 在 Shoot() 球未动【之前】抓一次，含落袋标志与全部计分/阶段状态，
+    // 是"把整盘回退到本杆击球前"的唯一权威副本。
+    private Vector3[] shotStartPos;                  // 本杆开始前各球世界坐标
+    private bool[] shotStartPotted;                  // 本杆开始前各球是否已落袋
+    private bool shotStartValid;                     // 是否已有可用的记录
+    private int[] shotStartScores = new int[2];      // 击球前双方总分
+    private int[] shotStartBreak = new int[2];       // 击球前双方单杆分
+    private int shotStartRedsLeft;
+    private bool shotStartColorsPhase, shotStartFreeColorPending, shotStartFreeBall, shotStartCueInHand;
+    private BallKind shotStartTargetColor;
+    private bool shotStartNominatedSet;
+    private BallKind shotStartNominatedColor;
+    private int shotStartCur;                        // 击球前轮到谁
+    private int shotStartMissCount;
+    private int shotStartPairStreak;                 // 147 连击追踪（一并回退，避免复位后误弹横幅）
+    private bool shotStartMax147Shown;
     private bool shotWasSnookered;       // v0.35：出杆瞬间是否被斯诺克（决定该杆是否判 Miss）
 
     // ---- 红黑连击追踪（147 满分提示用）----
@@ -133,6 +151,8 @@ public class GameManager : MonoBehaviour
         nominatedSet = false;
         canReplay = false;
         missCount = 0;
+        ReplacePending = false;                          // v0.53：清复位对话框状态
+        shotStartValid = false;                          // v0.53：新局尚无"本杆起点"
         PlaceAllBalls();
         cueInHand = true;                                // v0.36：开球前白球"球在手"，可在 D 区内摆放
         ui.ResetSpin();                                  // v0.36：加塞复位到中杆
@@ -221,6 +241,80 @@ public class GameManager : MonoBehaviour
     }
 
     /// <summary>
+    /// v0.53：在出杆前抓取"本杆起点"完整记录（球位 + 落袋标志 + 计分/阶段/击球权）。
+    /// 由 Shoot() 在球未动之前调用。这是 Rule 14(b)"从原始位置重打"与双方同意复位的数据源。
+    /// </summary>
+    void RecordShotStart()
+    {
+        int n = balls.Count;
+        if (shotStartPos == null || shotStartPos.Length != n)
+        {
+            shotStartPos = new Vector3[n];
+            shotStartPotted = new bool[n];
+        }
+        for (int i = 0; i < n; i++)
+        {
+            shotStartPos[i] = balls[i].transform.position;
+            shotStartPotted[i] = balls[i].potted;
+        }
+        shotStartScores[0] = scores[0]; shotStartScores[1] = scores[1];
+        shotStartBreak[0] = breakScore[0]; shotStartBreak[1] = breakScore[1];
+        shotStartRedsLeft = redsLeft;
+        shotStartColorsPhase = colorsPhase;
+        shotStartFreeColorPending = freeColorPending;
+        shotStartFreeBall = freeBallActive;
+        shotStartCueInHand = cueInHand;
+        shotStartTargetColor = targetColor;
+        shotStartNominatedSet = nominatedSet;
+        shotStartNominatedColor = nominatedColor;
+        shotStartCur = cur;
+        shotStartMissCount = missCount;
+        shotStartPairStreak = pairStreak;
+        shotStartMax147Shown = max147Shown;
+        shotStartValid = true;
+        Debug.Log("[SNOOKER] SHOT-START recorded p" + (cur + 1) + " reds=" + redsLeft +
+                  " colors=" + colorsPhase + " scores=" + scores[0] + ":" + scores[1]);
+    }
+
+    /// <summary>
+    /// v0.53：把整盘回退到本杆击球前的状态（球位/落袋/计分/阶段/击球权全量还原）。
+    /// useByReplay=false（双方同意的复位）：连计分/单杆分一起回退。
+    /// useByReplay=true （Rule 14(b) 原始位置重打）：只回退球位与阶段，**保留犯规罚分**
+    ///   （官方 14(b) 是"从原始位置重打"，之前判的犯规罚分不撤销）。
+    /// </summary>
+    void RestoreShotStart(bool useByReplay)
+    {
+        if (!shotStartValid) return;
+        for (int i = 0; i < balls.Count; i++)
+            balls[i].RestoreTo(shotStartPos[i], shotStartPotted[i]);
+        redsLeft = shotStartRedsLeft;
+        colorsPhase = shotStartColorsPhase;
+        freeColorPending = shotStartFreeColorPending;
+        freeBallActive = shotStartFreeBall;
+        targetColor = shotStartTargetColor;
+        nominatedSet = shotStartNominatedSet;
+        nominatedColor = shotStartNominatedColor;
+        pairStreak = shotStartPairStreak;
+        max147Shown = shotStartMax147Shown;
+        missCount = shotStartMissCount;
+        cur = shotStartCur;
+        if (!useByReplay)
+        {
+            // 双方同意的复位 = 整盘悔棋：计分与单杆分也回到本杆前
+            scores[0] = shotStartScores[0]; scores[1] = shotStartScores[1];
+            breakScore[0] = shotStartBreak[0]; breakScore[1] = shotStartBreak[1];
+            cueInHand = shotStartCueInHand;
+        }
+        // 复位后：清掉选框/自由球临时态，进入瞄准
+        canReplay = false;
+        freeBallActive = useByReplay ? shotStartFreeBall : false;
+        int onTable = 0;
+        foreach (var b in balls) if (!b.potted) onTable++;
+        Debug.Log("[SNOOKER] SHOT-START restored (replay=" + useByReplay + ") reds=" + redsLeft +
+                  " onTable=" + onTable + " scores=" + scores[0] + ":" + scores[1] + " cur=P" + (cur + 1));
+    }
+
+    /// <summary>
     /// 快照是否"损坏"：部分安卓设备（模拟器窗口失焦等场景）应用暂停/恢复后，
     /// 刚体的变换会被异常清零或漂移。出杆前若发现任何未落袋的球：
     ///   - 坐标接近原点（平方距离 < 0.0005），或
@@ -272,7 +366,9 @@ public class GameManager : MonoBehaviour
     {
         if (state != State.Aiming) return;
         if (ChoicePending) return;                        // v0.45：Miss 选择未处理，禁止击球（Rule 13/14(b)）
+        if (ReplacePending) return;                       // v0.53：复位对话框待确认时禁止击球
         if (SnapshotBroken()) RestoreSnapshot();          // 暂停导致的球位异常先修复
+        RecordShotStart();                                // v0.53：记录本杆起点（复位/原始位置重打用）
         // v0.35：记录"出杆瞬间是否被斯诺克"，供结算时判定 Miss（Rule 11(b)）
         shotWasSnookered = IsSnookered();
         cueInHand = false;                                // v0.36：出杆后白球不再"在手"（不能再挪）
@@ -632,6 +728,76 @@ public class GameManager : MonoBehaviour
         ui.ShowMsg("要求 " + names[cur] + " 重打", 2.5f);
         UpdateHud();
         EnterAim();
+    }
+
+    /// <summary>
+    /// v0.53：Rule 14(b) 第 2 选项——要求犯规方【从原始位置】重打。
+    /// 由接台方（非犯规方）在 Miss 选框中选择；把整盘球复位到犯规那一杆击球前的位置，
+    /// 击球权交回犯规方。**保留已判的犯规罚分**（官方 14(b) 是"重打"，罚分不撤销）。
+    /// </summary>
+    public void RequestReplayFromOriginal()
+    {
+        if (!canReplay || state != State.Aiming) return;
+        canReplay = false;
+        int chooser = cur;                               // 当前做选择者 = 非犯规方
+        RestoreShotStart(true);                          // 回退球位/阶段（保留罚分）；cur 回到犯规方
+        Debug.Log("[SNOOKER] REPLAY-from-ORIGINAL: chooser P" + (chooser + 1) + " → fouler P" + (cur + 1) + " replays");
+        ui.ShowMsg(names[chooser] + " 要求 " + names[cur] + " 从原始位置重打", 3f);
+        UpdateHud();
+        EnterAim();
+    }
+
+    // ---- v0.53：双方同意的"复位上一杆"（手动，非官方条款；双方都同意才生效）----
+    /// 复位对话框是否正等待双方确认（UI 用）。
+    public bool ReplacePending { get; private set; }
+    private bool replaceP1Agree, replaceP2Agree;         // 两名球员各自的同意状态
+
+    /// 打开复位对话框（Aiming 且已有本杆起点记录时）。
+    public void OpenReplaceDialog()
+    {
+        if (state != State.Aiming || !shotStartValid) return;
+        replaceP1Agree = replaceP2Agree = false;
+        ReplacePending = true;
+        ui.ShowReplaceDialog();
+        Debug.Log("[SNOOKER] REPLACE dialog opened (awaiting both players)");
+    }
+
+    /// 关闭复位对话框（取消）。
+    public void CancelReplace()
+    {
+        if (!ReplacePending) return;
+        ReplacePending = false;
+        ui.HideReplaceDialog();
+        Debug.Log("[SNOOKER] REPLACE cancelled");
+    }
+
+    /// 记录某位球员的同意状态（UI 的两个开关调用）。
+    public void SetReplaceAgree(int player, bool agree)
+    {
+        if (player == 0) replaceP1Agree = agree; else replaceP2Agree = agree;
+    }
+
+    /// 确认：双方都同意 → 整盘回退到上一杆击球前（含比分）；任一方不同意 → 提示是谁否决。
+    public void ConfirmReplace()
+    {
+        if (!ReplacePending) return;
+        if (SnookerRules.ReplacementApproved(replaceP1Agree, replaceP2Agree))
+        {
+            ReplacePending = false;
+            ui.HideReplaceDialog();
+            RestoreShotStart(false);                     // 全量回退（含计分）
+            ui.ShowMsg("双方同意 · 已复位到上一杆开始前", 3f);
+            UpdateHud();
+            EnterAim();
+            Debug.Log("[SNOOKER] REPLACE approved p1=agree p2=agree → restored");
+        }
+        else
+        {
+            string who = !replaceP1Agree ? names[0] : names[1];
+            ui.ShowMsg(who + " 不同意复位", 2.5f);
+            Debug.Log("[SNOOKER] REPLACE rejected p1=" + (replaceP1Agree ? "agree" : "disagree") +
+                      " p2=" + (replaceP2Agree ? "agree" : "disagree"));
+        }
     }
 
     /// <summary>

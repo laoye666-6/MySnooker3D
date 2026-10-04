@@ -1,15 +1,15 @@
 【项目上下文导入 —— 双人斯诺克 3D（Unity / Blender / MuMu / GitHub）】
 
 我正在开发一个已基本完成并已开源的项目，以下是压缩上下文，请记住并在后续工作中使用。
-更完整的细节（逐条踩坑 46 条、完整版本史、全部命令）见同目录 CONTEXT_SUMMARY.md 与 E:\Snooker\README.md。
+更完整的细节（逐条踩坑 48 条、完整版本史、全部命令）见同目录 CONTEXT_SUMMARY.md 与 E:\Snooker\README.md。
 
 ■ 项目：安卓双人同屏斯诺克游戏 —— 完整官方斯诺克规则（58 断言回归）、真实物理（含袋口/加塞杆法）、
   可开关辅助瞄准线、贝塞尔入场运镜、设置界面、单杆分 HUD、147 提示、
   iOS 液态玻璃 UI（重磨砂+边缘拉丝/Q 弹/触感）、碰撞音效（响度音调随速度）、
   **台球厅环境场景（三桌/吊灯/陈设，无人物）**
 ■ 技术栈：Unity 2022.3.62f3c1（IL2CPP，ARM64+X86_64）+ Blender 5.2.2 脚本化建模（MCP 驱动）+ MuMu 实测
-■ 当前版本：v0.52（第 52 次迭代）；APK：E:\Snooker3D\Builds\Snooker3D.apk
-■ 已开源：https://github.com/laoye666-6/MySnooker3D （public / MIT，Release v0.52 已带 APK，Latest）
+■ 当前版本：v0.53（第 53 次迭代）；APK：E:\Snooker3D\Builds\Snooker3D.apk
+■ 已开源：https://github.com/laoye666-6/MySnooker3D （public / MIT，Release v0.53 已带 APK，Latest）
 
 ■ 路径（全部实测有效）
 - 源码母本（权威）：E:\Snooker\unity_src\Scripts（16 个 cs）+ unity_src\Editor（4 个）
@@ -18,7 +18,7 @@
 - 台球厅资产母本：assets\hall\（pool_hall.fbx/glb + CC0 资源）→ 拷入 Assets\Resources\Models\
   （命名 pool_hall.fbx）与 Assets\Resources\Textures\hall\（diffuse 贴图 6 张）
 - Unity 工程：E:\Snooker3D；开源仓库：E:\Snooker\MySnooker3D（docs\DEVELOPMENT.md 详细文档）
-- 文档：E:\Snooker\README.md（踩坑 46 条+版本记录）、CONTEXT_SUMMARY.md、blender\pool_hall_README.md
+- 文档：E:\Snooker\README.md（踩坑 48 条+版本记录）、CONTEXT_SUMMARY.md、blender\pool_hall_README.md
 - Unity：E:\Program files\2022.3.62f3c1\Editor\Unity.exe；Blender：D:\Program Files\STEAM\...\blender.exe
 - MuMu adb：E:\Program files\Netease\MuMu\nx_main\adb.exe，目标 127.0.0.1:16384
 - 日志：E:\Snooker\logs\；截图：E:\Snooker\shots\
@@ -29,7 +29,7 @@
 - SnookerRules.cs = 纯函数规则引擎（TableState + ShotFacts → ShotOutcome，不碰物理/UI）
 - GameManager.cs = 规则落地 + 几何判定 IsSnookered()/BallsOn() + 球在手 + ChoicePending 门禁
 - Editor：RuleTest.cs（58 断言）/ PhysTest.cs（Run 开球/CushionTest/SpinTest/PocketTest 四入口）/
-  BuildGame.cs（版本号在此改，当前 0.52/52）/ ShotTest.cs（编辑器截图 14 帧）
+  BuildGame.cs（版本号在此改，当前 0.53/53）/ ShotTest.cs（编辑器截图 16 帧）
 - 其余：G.cs(常量) Bootstrapper(自建场景+球桌碰撞体+**台球厅加载/材质重建/室内光照 v0.50**)
   BallController(球+白球自旋+袋口防弹射+碰撞音效上报) CueController(瞄准/出杆/加塞/拖球/微调)
   AimLine(辅助线+指定彩球) SpinPad(加塞圆盘) GameCamera(运镜，入场弧线已压回厅内)
@@ -69,7 +69,7 @@
    灯罩已上移 0.30；相机入场弧线 2.45~2.55m（天花板 2.68）。
 4. 免费资源全 Poly Haven CC0（tools\fetch_hall_assets.py；API 需设 UA）。
 
-■ 关键约束（踩坑精华，共 46 条详见 README）
+■ 关键约束（踩坑精华，共 48 条详见 README）
 1. MuMu 只认 arm64/x86_64 → IL2CPP；stripEngineCode=false + link.xml
 2. 物理资产 m_SimulationMode 必须 0；测试 try/finally 恢复
 3. 文字一律 IMGUI + DroidSansFallback；uGUI 中心锚定 pos.y=540-设计y；CRect cx 是中心
@@ -107,7 +107,8 @@ bash E:\Snooker\tools\regress.sh
 ■ 已完成：玩法闭环 + 完整规则 + 球在手 + 加塞 + 物理步长可调 + 运镜 + 设置 + HUD + 147 + 图标
   + 袋口真实物理 + 液态玻璃 UI（磨砂拉丝/Q弹/触感/软投影）+ 碰撞音效（速度映射）+ 台球厅场景
   + 胜利结算动画（v0.51：卡片 Q 弹/比分跳数/彩纸/胜利号角）+ 台球厅吊灯抬高（v0.52，相机不再被挡）
-■ 未实现（已就地标注）：Miss 累计三次判负、自由球裁判裁量、Miss"原始位置重摆"
+  + 复选项（v0.53：Rule 14(b) 三选一含原始位置重打 + 双方同意复位）+ 玻璃去白边更透 + 袋口库边下摆
+■ 未实现（已就地标注）：Miss 累计三次判负、自由球裁判裁量（v0.53 已补齐 Miss"原始位置重摆"）
 ■ 已知遗留：台球厅偏暗（有意，可调 HallLampLight 强度/颜色）；MuMu 玻璃不渲染（真机正常）；
   APK ~78MB（备用字体 48MiB 可移出）；背景两桌无装饰球；无环境音
 ■ 台球厅改动须知（v0.52）：blender\pool_hall.blend = 权威；改后无头导出 FBX 必须

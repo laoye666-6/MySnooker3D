@@ -69,22 +69,23 @@ public class UIGlass : MaskableGraphic
         return g;
     }
 
-    /// 磨砂玻璃（大面板）：重磨砂 + 长跨度边缘拉丝（v0.47 参考质感；
-    /// 参考图的大面板拖影约占高度 15~25%，故 streak/lens 给到大值）。
+    /// 大面板玻璃（菜单/设置/结算/对话框）：v0.53 起边缘白（rim/sheen/edgeAlpha）比 v0.47 明显
+    /// 收敛 → 去白边；但仍保留中度奶白（frost 0.20）——台球厅很暗，面板必须够"亮"才读得清墨字。
     public void UseBlur(float blur = 14f, float frost = 0.14f, float lift = 0.10f, float crisp = 0.35f)
     {
-        UseLiquid(frost, crisp * 0.3f, 5f, 0.7f, 36f, 90f, 40f, 3f,
-                  0.20f, 0.10f, 0.30f, 0.12f, 0.30f, 0.32f, 0.10f);
+        UseLiquid(0.20f, 0.25f, 5f, 0.7f, 36f, 60f, 40f, 3f,
+                  0.12f, 0.10f, 0.16f, 0.10f, 0.12f, 0.30f, 0.08f, 0.06f, 0.08f);
     }
 
-    /// 清澈水玻璃（按钮/胶囊/圆点）：v0.47 起映射到参考质感的控件预设——
-    /// 保留旧签名（SpinPad 等调用点不用改），折射/清晰度收敛、磨砂与边缘拉丝成为主导。
+    /// 清澈水玻璃（按钮/胶囊/圆点）：v0.53 起去白边、接近清玻璃——
+    /// 旧版 _Frost 写死 0.36（控件"发白"主因）现降到 0.08，_Crisp 大幅提高，
+    /// sheen/rim/spec/edgeAlpha 逐项下调；保留穹顶折射与边缘透镜的"玻璃感"。
     public void UseRefraction(float blur = 1.5f, float refr = 22f, float bulge = 1.4f,
                               float spec = 1.0f, float edgeAlpha = 0.6f, float crisp = 0.55f,
                               float glow = 0.55f)
     {
-        UseLiquid(0.36f, crisp * 0.35f, refr * 0.55f, bulge, 34f, 44f, 26f, 2f,
-                  0.28f, 0.12f, 0.32f, 0.10f, spec * 0.4f, edgeAlpha, 0.18f);
+        UseLiquid(0.08f, crisp * 0.85f, refr * 0.55f, bulge, 34f, 30f, 26f, 2f,
+                  0.10f, 0.10f, 0.12f, 0.12f, spec * 0.18f, edgeAlpha * 0.65f, 0.10f, 0.03f, 0.06f);
     }
 
     /// <summary>
@@ -94,18 +95,21 @@ public class UIGlass : MaskableGraphic
     ///   edgeW  边缘效果带宽（px）  blurTexels 磨砂源上的小核模糊（blur-RT texel）
     ///   sheen  顶部内侧受光高光  innerSh 底部内侧厚度阴影  rim 最边缘细亮边
     ///   edgeDark 边缘轻收暗（亮背景可读性）  spec 镜面高光  edgeAlpha 边缘 alpha 抬升
-    ///   glow   三盏游动光源强度（v0.47 调低作点缀）
+    ///   glow   三盏游动光源强度
+    ///   lift   整体提亮（v0.53 由写死 0.10 提为参数）  desat 去饱和（v0.53 新增，默认低→更透）
     /// </summary>
     public void UseLiquid(float frost, float crisp, float refr, float bulge,
                           float lens, float streak, float edgeW, float blurTexels,
                           float sheen, float innerSh, float rim, float edgeDark,
-                          float spec, float edgeAlpha, float glow)
+                          float spec, float edgeAlpha, float glow,
+                          float lift = 0.10f, float desat = 0.10f)
     {
         var m = MakeGlassMaterial();
         if (m == null) return;
         m.SetFloat("_BlurTexels", blurTexels);
         m.SetFloat("_Frost", frost);
-        m.SetFloat("_Lift", 0.10f);                     // v0.47：整体提亮固定档（参考稿奶白感）
+        m.SetFloat("_Lift", lift);                      // v0.53：可调（旧版写死 0.10，是"整体发白"主因之一）
+        m.SetFloat("_Desat", desat);
         m.SetFloat("_Crisp", crisp);
         m.SetFloat("_Refr", refr);
         m.SetFloat("_Bulge", bulge);

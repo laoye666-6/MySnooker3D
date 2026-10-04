@@ -97,6 +97,34 @@ public struct ShotOutcome
 public static class SnookerRules
 {
     // ---------------------------------------------------------------------------------
+    // v0.53：判 Miss（Rule 14）后接台方的处置权 / 双方同意的复位
+    // ---------------------------------------------------------------------------------
+
+    /// 官方依据 WPBSA 2024-25 Section 3 Rule 14(b)：判 FOUL AND A MISS 后，由【非犯规方】
+    /// 三选一——(a) 要求犯规方从【当前】球位重打；(b) 要求犯规方从【原始】球位重打
+    /// （即把整盘球复位到犯规那一杆之前）；(c) 自己击球。
+    public enum ReplayOption
+    {
+        CurrentPosition = 0,   // 从当前位置重打（球位不动，击球权交回犯规方）
+        OriginalPosition = 1,  // 从原始位置重打（球复位到本杆前，击球权交回犯规方）
+        PlaySelf = 2,          // 接台方自己击球（放弃要求对方重打）
+    }
+
+    /// Rule 14(b)：做出选择的是【非犯规方】，即犯规方的对手。
+    /// 传入犯规方下标，返回应做选择者的下标（0/1）。
+    public static int ReplayChooser(int foulerIndex) { return 1 - foulerIndex; }
+
+    /// <summary>
+    /// v0.53：手动"复位上一杆"是否获准——**双方都同意**才通过（任一方不同意则否决）。
+    /// 说明：这不是官方条款（官方只有 Rule 14(b) 那条判 Miss 后的原始位置重打）；
+    /// 本作提供的是"两名球员都点头才生效"的友谊悔棋，故用同意矩阵表达。
+    /// </summary>
+    public static bool ReplacementApproved(bool p1Agree, bool p2Agree)
+    {
+        return p1Agree && p2Agree;
+    }
+
+    // ---------------------------------------------------------------------------------
     // 当前球 on 的形态
     // ---------------------------------------------------------------------------------
     public static BallOnKind BallOn(TableState s)

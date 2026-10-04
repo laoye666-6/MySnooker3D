@@ -1,4 +1,4 @@
-# 双人斯诺克 3D —— 项目上下文总结（截至 v0.52，2026-10-03）
+# 双人斯诺克 3D —— 项目上下文总结（截至 v0.53，2026-10-04）
 
 > 本文件为完整压缩上下文，供导入 AI 助手继续开发使用。
 > 项目根目录：`E:\Snooker`（工作区）；Unity 工程：`E:\Snooker3D`
@@ -36,7 +36,7 @@
 | 开源仓库 | `E:\Snooker\MySnooker3D`（origin 已配，master；`docs\DEVELOPMENT.md` = 详细开发文档） |
 | 辅助脚本 | `E:\Snooker\tools\`：sync.bat / m.bat / regress.sh / make_audio.py（音效合成）/ fetch_hall_assets.py（台球厅 CC0 资源下载）+ 4 个编辑器 GUI 自动化 ps1 |
 | 截图/日志 | `E:\Snooker\shots\`（编辑器截图 `shots\editor\`、台球厅 `hall_*.png`）、`E:\Snooker\logs\` |
-| 文档 | `E:\Snooker\README.md`（踩坑 46 条 + 版本史）、本文件、`DSH_IMPORT_PROMPT.txt` |
+| 文档 | `E:\Snooker\README.md`（踩坑 48 条 + 版本史）、本文件、`DSH_IMPORT_PROMPT.txt` |
 
 包名 `com.snookerlab.snooker3d`；Activity `com.unity3d.player.UnityPlayerActivity`
 
@@ -55,9 +55,12 @@
 - `GameManager.cs` — 状态机(Menu/Aiming/Rolling/GameOver) + 把规则结果落地（加分/回点/
   换手/终局）+ 几何判定 `IsSnookered()`/`BallsOn()` + 单杆分 + 147 连击 + 球在手 `DragCueBall()`
   + ChoicePending 门禁（Miss 选框未选择前禁止击球，v0.45）
+  + **v0.53：`RecordShotStart()` 每杆起点记录（球位/落袋/比分/阶段/击球权）、Rule 14(b) 三选一
+  （当前位置/原始位置重打/自己打）、双方同意的"复位上一杆"（两人都同意才回退整盘）**
 - `BallController.cs` — 落袋/下沉/重置/滚动摩擦/碰撞上报；白球自旋模型（`CueRollStep` 滑移摩擦
   耦合 / `CushionKick` 侧塞撞库）+ `PocketLaunchGuard()`（袋口防弹射）+ **v0.46 碰撞音效上报
   `CollisionSfx`（撞球→Sfx.Ball、撞库/袋衬→Sfx.Cush，法向相对速度，实例 ID 防双响）**
+  + **v0.53 `RestoreTo(pos, wasPotted)` 精确复位（含落袋态还原）**
 - `CueController.cs` — 瞄准角(灵敏度 0.0018rad/px)/力度/出杆动画/加塞状态/拖球；`NudgeStep`=0.00035
 - `AimLine.cs` — 辅助线：幽灵球解析几何 + 目标球走向 + 分离线 + 库边反弹；暴露 `AimedBall`
 - `SpinPad.cs` — 加塞圆盘控件
@@ -84,7 +87,7 @@
 
 **Editor `Editor\`（4 个）：**
 - `BuildGame.cs` — 命令行构建（`-x86only` 调试；**版本号在此改**，当前 0.50/50）
-- `RuleTest.cs` — **58 条规则断言**（不走物理、不需模拟器）
+- `RuleTest.cs` — **65 条规则断言**（不走物理、不需模拟器）
 - `PhysTest.cs` — 离线物理回归四入口：`Run` 开球 / `CushionTest` 库边 / `SpinTest` 加塞 / `PocketTest` 袋口
 - `ShotTest.cs` — 编辑器内自动截图驱动（11 张关键帧；不能加 -quit/-batchmode，窗口须前台）
 
@@ -97,7 +100,7 @@ cmd //c "E:\Snooker\tools\sync.bat"
 
 :: 全量回归（串行 5 道；Unity 工程锁独占不能并行；期望全绿）
 bash E:\Snooker\tools\regress.sh
-::   RuleTest 58/58 | PhysTest.Run/CushionTest(3 bounced=True)/SpinTest(ALL SPIN OK)/PocketTest(PASS=6)
+::   RuleTest 65/65 | PhysTest.Run/CushionTest(3 bounced=True)/SpinTest(ALL SPIN OK)/PocketTest(PASS=6)
 
 :: 构建 APK —— 【踩坑 44】构建前必须：taskkill adb.exe java.exe（MuMu 的 adb/残留 Gradle
 ::   daemon 会挡住 SDK 探测死等）+ 删 Temp/；且代理须在线（Unity 联网 fetch SDK 仓库索引，
@@ -124,7 +127,24 @@ adb shell screencap -p /sdcard/a.png && adb pull /sdcard/a.png E:/Snooker/shots/
 :: MuMu 被关（宿主睡眠/杀 adb 后）→ MuMuManager.exe control -v 0 launch 重启（约 55 秒）
 ```
 
-## 五、近五版改动（v0.48~v0.52）
+## 五、近五版改动（v0.49~v0.53）
+
+### v0.53 —— 复选项 + 玻璃更透 + 球在手通知 + 袋口库边（2026-10-04）
+- **① 球在手提示移到左上**：原居中胶囊（1100×52）横跨台面挡视线 → 左侧紧凑胶囊（660×52，
+  设计 x 36~696、左对齐），与顶栏/中央提示互不重叠。
+- **② 液态玻璃去白边、更透**：LiquidGlass.shader 去饱和 0.22 → `_Desat` 可调、`_Lift` 补上
+  真正可调（原被 UseLiquid 写死 0.10）；`UseRefraction` 的 `_Frost` 0.36→0.08、`_Crisp` 提高、
+  `_Sheen/_Rim/_EdgeAlpha/_SpecInt` 逐项下调（按钮/顶栏/胶囊去白晕）。**踩坑 48**：去白边≠把
+  面板填充调透——台球厅很暗，面板一透就变暗、墨字读不清；边缘光学与面板填充要分开调
+  （大面板 UseBlur 保留中度奶白 0.20 + 浅色板填充）。另修 `pow(band,6)` 未钳底数（踩坑 39）。
+- **③ 每杆记录 + Rule 14(b) 原始位置重打 + 双方同意复位**：`GameManager.RecordShotStart()` 在
+  Shoot 前抓完整起点（球位/落袋/比分/单杆分/红球/阶段/击球权）；Miss 选框扩为**三选一**
+  （当前位置/原始位置=整盘复位保留罚分/我自己打）；新增 HUD「复位上一杆」按钮 → 双方确认框
+  （玩家1/2 各自同意·不同意，两人都同意才回退含比分）。纯函数 `ReplayChooser/ReplacementApproved`。
+- **④ 袋口库边下部"未渲染"修复**：**踩坑 47**——台呢在袋口被布尔挖洞、库边底恰在 z=0，低位
+  视角能看穿库边端头下方露出木框暗井（资产本身闭合无缺面）。`make_table.py` 给库边加**下摆**
+  （底边 z=-0.055）+ 袋井 0.40→0.44，重导 table.obj。排查法：低机位渲染（render_pocket_diag.py）。
+- 回归：规则 **65/65**（+7 断言）、库边 3×bounced、ALL SPIN OK、袋口 PASS=6；ShotTest 16 帧。
 
 ### v0.52 —— 抬高台球厅吊灯（相机不再被灯挡，2026-10-03）
 - **问题**：跟球机位高 1.18m，灯罩下沿（v0.50 Unity 补丁 +0.30 后）约 1.15m → 视线被灯罩侵入。
@@ -237,7 +257,7 @@ adb shell screencap -p /sdcard/a.png && adb pull /sdcard/a.png E:/Snooker/shots/
    软投影 `AttachShadow()` 只挂随面板 CanvasGroup 淡入淡出的元素。
 5. 设置弹窗背景渐模糊 = SettingsBlurBg 全屏磨砂层随 settingsCG 淡入。
 
-## 九、踩坑精选（完整 46 条见 README「踩坑记录」）
+## 九、踩坑精选（完整 48 条见 README「踩坑记录」）
 
 只列仍会影响新改动的：
 
@@ -277,6 +297,7 @@ adb shell screencap -p /sdcard/a.png && adb pull /sdcard/a.png E:/Snooker/shots/
 - v0.49 台球厅场景（Blender 资产轮）→ v0.50 台球厅集成进游戏（FBX/材质重建/室内光）
 - v0.51 胜利结算动画（卡片 Q 弹/比分跳数/彩纸 UIConfetti/胜利号角 maxBreak 统计）
 - v0.52 抬高台球厅吊灯（罩 1.60 下沿，相机不再被挡；踩坑 46 FBX 逐对象选中）
+- v0.53 复选项 + 玻璃去白边更透 + 球在手移左上 + 袋口库边下摆（规则 65 断言；踩坑 47/48）
 
 ## 十一、当前功能全清单（均已验收）
 
@@ -289,7 +310,7 @@ adb shell screencap -p /sdcard/a.png && adb pull /sdcard/a.png E:/Snooker/shots/
 
 ## 十二、遗留 / 可做
 
-- **未实现规则**：Miss 累计三次判负（Rule 11(c)(i)/14(d)(ii)）、自由球裁判裁量、Miss"原始位置重摆"
+- **未实现规则**：Miss 累计三次判负（Rule 11(c)(i)/14(d)(ii)）、自由球裁判裁量。（v0.53 已补齐"原始位置重摆"）
 - 观感可调：台球厅整体偏暗（有意，真实球房暗环境）——调 `Bootstrapper` 的 HallLampLight
   intensity/color 即可；MuMu 上玻璃多数元素不渲染（踩坑 43，真机正常）
 - APK 约 75MB：两个未引用备用字体 ~48MiB 可移出 Resources；台球厅贴图可 2k→1k 省一半

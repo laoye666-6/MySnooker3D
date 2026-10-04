@@ -26,7 +26,8 @@ HOLE_CORNER = 0.055            # cloth hole radius, corner pockets
 HOLE_CENTER = 0.062            # cloth hole radius, center pockets
 CORNER_OFF = 0.008             # pocket center offset outside cloth corner
 CENTER_OFF = 0.018
-WELL_DEPTH = 0.40              # 袋口暗井深度（v0.41：平齐黑盘 → 真正有深度的杯状井）
+WELL_DEPTH = 0.44              # 袋口暗井深度（v0.41：平齐黑盘 → 真杯状；v0.53：0.40→0.44
+                               #   让井外筒在库边下摆(z=-0.055)之下仍有实体，袋口下沿不露底）
 FRAME_OUT_X, FRAME_OUT_Y = L / 2 + 0.19, W / 2 + 0.19
 FRAME_IN_X, FRAME_IN_Y = L / 2 + 0.045, W / 2 + 0.045
 FRAME_TOP, FRAME_BOT = 0.048, -0.12
@@ -131,8 +132,14 @@ boolean_diff(bed, cutters)
 table_objs.append(bed)
 
 # ---------------- cushions (6 segments, arc-rounded jaw ends) ----------------
+# v0.53：给库边加"下摆"（skirt）——横截面底边从 z=0 下沉到 z=-CUSH_SKIRT。
+# 起因：台呢床身在袋口被布尔挖掉（见上），而库边底面原本恰好在 z=0（台呢顶面），
+# 于是从袋口低位视角能"看穿"库边端头下方 —— 露出木框与暗井的黑洞（用户反馈
+# "部分库边下部未渲染"）。下摆把库边实体延伸到台呢层以下，袋口处不再有缝。
+CUSH_SKIRT = 0.055            # 库边下摆深度（z=0 → -0.055，与台呢床身同厚）
 # PROF: 库边横截面，v=0 是鼻线（球接触的竖直面），v=CUSH_D 是木框侧。
-PROF = [(0.0, 0.0), (CUSH_D, 0.0), (CUSH_D, 0.030), (0.012, CUSH_H), (0.0, NOSE_TOP)]
+# 顺序：鼻线底 → 木侧底 → 木侧顶 → 肩 → 鼻线顶（首尾相连的闭合多边形）。
+PROF = [(0.0, -CUSH_SKIRT), (CUSH_D, -CUSH_SKIRT), (CUSH_D, 0.030), (0.012, CUSH_H), (0.0, NOSE_TOP)]
 
 def cushion(name, T, u0, u1, material, r0, r1):
     """T(u,v,z) -> world; v=0 at nose plane.

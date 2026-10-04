@@ -79,6 +79,13 @@ public class UIManager : MonoBehaviour
     private GameObject replayPanel;
     private CanvasGroup replayCG;
 
+    // ---- v0.53：双方同意的复位对话框 ----
+    private GameObject replacePanel;
+    private CanvasGroup replaceCG;
+    private float replaceAlpha;
+    private bool replaceOpen;                             // 淡入淡出目标
+    private bool repP1Agree, repP2Agree;                 // 本地镜像（绘制文字用；真值在 GameManager）
+
     // ---- v0.36：加塞圆盘 ----
     private SpinPad spinPad;                              // 击球点选择器（拖动小圆点选高/低杆与左右塞）
 
@@ -90,21 +97,24 @@ public class UIManager : MonoBehaviour
     // 菜单期大面板：淡色磨砂玻璃——磨砂底不透明度高，模糊后的彩色场景从玻璃里透出
     // 才有"液态玻璃"感（面板 alpha 太低时清晰场景直接穿透，磨砂感会消失）；
     // 游戏内 HUD 与控件：真半透明浅玻璃 + 墨色字；主操作 = 系统绿胶囊。
-    private static readonly Color GlassSheet   = new Color(0.74f, 0.79f, 0.88f, 0.58f); // 菜单期淡磨砂底
-    private static readonly Color GlassPanel   = new Color(0.72f, 0.78f, 0.88f, 0.60f); // 设置面板磨砂
-    private static readonly Color GlassWhite   = new Color(1f, 1f, 1f, 0.24f);          // HUD 顶条
-    private static readonly Color GlassNeutral = new Color(1f, 1f, 1f, 0.28f);          // 次级按钮
-    private static readonly Color GlassStrong  = new Color(1f, 1f, 1f, 0.36f);          // 提示胶囊/弹层
-    private static readonly Color GlassGreen   = new Color(0.22f, 0.72f, 0.42f, 0.44f); // 主操作（iOS 绿）
-    private static readonly Color GlassBlue    = new Color(0.28f, 0.58f, 1f, 0.42f);    // 强调操作（iOS 蓝）
-    private static readonly Color MintPill     = new Color(0.74f, 0.95f, 0.80f, 0.34f); // "球在手/自由球"薄荷胶囊
-    private static readonly Color ChipBlue     = new Color(0.25f, 0.62f, 1f, 0.46f);    // 玩家1 阵营点
-    private static readonly Color ChipRed      = new Color(1f, 0.36f, 0.33f, 0.46f);    // 玩家2 阵营点
+    // v0.53：去白边靠 shader（_Rim/_Sheen/_EdgeAlpha/_Frost 已下调）。但大面板（菜单/设置/结算/
+    // 复位弹窗）是"浅色玻璃板"——台球厅很暗，玻璃一透面板就变暗，板上深色墨字会读不清；
+    // 故面板填充反而调高（浅色板 + 墨字 = 可读），HUD/顶栏/胶囊/按钮在亮台面上方可用低 alpha。
+    private static readonly Color GlassSheet   = new Color(0.78f, 0.82f, 0.90f, 0.64f); // 菜单/结算浅色玻璃板
+    private static readonly Color GlassPanel   = new Color(0.78f, 0.82f, 0.90f, 0.66f); // 设置/复位面板浅色玻璃板
+    private static readonly Color GlassWhite   = new Color(1f, 1f, 1f, 0.16f);          // HUD 顶条（更透）
+    private static readonly Color GlassNeutral = new Color(1f, 1f, 1f, 0.18f);          // 次级按钮（更透）
+    private static readonly Color GlassStrong  = new Color(1f, 1f, 1f, 0.22f);          // 提示胶囊/弹层（更透）
+    private static readonly Color GlassGreen   = new Color(0.22f, 0.72f, 0.42f, 0.42f); // 主操作（iOS 绿）
+    private static readonly Color GlassBlue    = new Color(0.28f, 0.58f, 1f, 0.40f);    // 强调操作（iOS 蓝）
+    private static readonly Color MintPill     = new Color(0.74f, 0.95f, 0.80f, 0.22f); // "球在手/自由球"薄荷胶囊
+    private static readonly Color ChipBlue     = new Color(0.25f, 0.62f, 1f, 0.42f);    // 玩家1 阵营点
+    private static readonly Color ChipRed      = new Color(1f, 0.36f, 0.33f, 0.42f);    // 玩家2 阵营点
     private static readonly Color Ink          = new Color(0.08f, 0.09f, 0.11f);        // 主文字（浅玻璃上）
     private static readonly Color Ink2         = new Color(0.34f, 0.36f, 0.42f, 0.85f); // 次级文字
     private static readonly Color AccentOrange = new Color(1f, 0.58f, 0.0f);            // 单杆分/147（iOS 橙）
-    private static readonly Color Rim          = new Color(1f, 1f, 1f, 0.55f);          // 玻璃边缘高光环
-    private static readonly Color Hairline     = new Color(1f, 1f, 1f, 0.30f);          // 分隔细线
+    private static readonly Color Rim          = new Color(1f, 1f, 1f, 0.34f);          // 玻璃边缘高光环
+    private static readonly Color Hairline     = new Color(1f, 1f, 1f, 0.22f);          // 分隔细线
     private static readonly Color TextRed      = new Color(0.86f, 0.27f, 0.24f);        // 重新开局（iOS 红）
 
     // ---- 字号规范（v0.44）：全部 IMGUI 文字引用下列常量，不再散落字面量。----
@@ -262,7 +272,11 @@ public class UIManager : MonoBehaviour
         // 位置与 OnGUI 里的 msgText(设计y=160)/球在手(300)/指定彩球(240) 一一对应：
         // uGUI 中心锚定 y 向上 → pos.y = 540 - 设计y。
         msgPillCG = MakePill("MsgPill", cgo.transform, new Vector2(0, 380), new Vector2(1400, 64), GlassStrong);
-        cueHandPillCG = MakePill("CueHandPill", cgo.transform, new Vector2(0, 240), new Vector2(1100, 52), MintPill);
+        // v0.53：球在手提示从屏幕中央挪到【左上/左侧】——居中时胶囊横跨台面中上部，
+        // 开球前/白球落袋后长时间挡视线。改为左侧紧凑胶囊（设计中心 x≈366、y=300，
+        // 左缘 36、宽 660），文字左对齐；右缘 696 远在中央提示条/任意彩球胶囊之左，
+        // 与顶栏（y≤103）也拉开距离。uGUI pos.y = 540 - 设计y。
+        cueHandPillCG = MakePill("CueHandPill", cgo.transform, new Vector2(-594, 240), new Vector2(660, 52), MintPill);
         ballOnPillCG = MakePill("BallOnPill", cgo.transform, new Vector2(0, 300), new Vector2(940, 52), GlassStrong);
         ballOnPill = ballOnPillCG.GetComponent<UIGlass>();
         // 力度百分比文字的胶囊底（常显：随 HUD 整体 CanvasGroup 一起淡出，无需单独驱动）
@@ -338,8 +352,10 @@ public class UIManager : MonoBehaviour
         // v0.44g：设置弹出时背景逐渐高斯模糊——全屏磨砂层是 settingsRoot 的子物体，
         // 随 settingsCG 的淡入（= 滑入动画进度）同步出现，alpha 到 1 时背景完全变成
         // 模糊场景（LiquidGlass 的 _Blur 14 = 高斯观感）。置于面板之下、暗化之上。
+        // v0.53：玻璃更透后，面板后的场景会"透"上来压暗文字对比 —— 这层暗色模糊底
+        // 只做轻度压暗（0.82→0.70），避免把浅色玻璃面板整体拉暗、墨字读不清。
         var settingsBlurBg = UIGlass.Stretch(settingsRoot.transform, "SettingsBlurBg",
-            new Color(0.16f, 0.18f, 0.22f, 0.82f), true, 14f, 0.06f, 0.02f, 0.18f);   // 暗色高斯模糊（iOS sheet 语言：暗底衬亮面板）
+            new Color(0.16f, 0.18f, 0.22f, 0.70f), true, 14f, 0.06f, 0.02f, 0.18f);   // 暗色高斯模糊（iOS sheet 语言：暗底衬亮面板）
         settingsBlurBg.raycastTarget = false;
         settingsBlurBg.transform.SetAsFirstSibling();
 
@@ -398,25 +414,65 @@ public class UIManager : MonoBehaviour
         popupCG.alpha = 0f;
         popupCG.blocksRaycasts = false;
 
-        // ---- v0.35：让对手重打 提示框（判 Miss 后显示，Rule 11(b)）----
-        // 位置在屏幕中下方（不遮挡球堆与瞄准区），两个按钮左右并排
-        var replayGlass = UIGlass.Add(mgo.transform, "ReplayPanel", new Vector2(0.5f, 0.5f), new Vector2(0, -300), new Vector2(1160, 210),
+        // ---- v0.35：让对手重打 提示框（判 Miss 后显示，Rule 11(b)）；v0.53 扩为 Rule 14(b) 三选一 ----
+        // 位置在屏幕中下方（不遮挡球堆与瞄准区）；v0.53 由两按钮改为【三按钮】一排：
+        // 当前位 / 原始位 / 我自己打。面板加宽以容纳，标题行标明是谁在做选择。
+        var replayGlass = UIGlass.Add(mgo.transform, "ReplayPanel", new Vector2(0.5f, 0.5f), new Vector2(0, -285), new Vector2(1500, 214),
             GlassStrong, 36f);
         replayGlass.raycastTarget = true;                    // 面板自身挡住下面的按钮
         replayPanel = replayGlass.gameObject;
+        replayGlass.UseBlur();                              // v0.53：与大面板同款浅色玻璃（否则用默认材质会过白）
         replayGlass.AttachShadow(14f, -6f, 0.22f, 18f);     // v0.47：弹层软投影
         // v0.45：全屏透明挡板（选框的子物体，继承其淡入/射线开关）——选框弹出期间
         // 挡住屏幕上一切点击（击球/力度/瞄准），强制先做出选择（Rule 13/14(b)）。
-        // 放在两个选项按钮之前创建（渲染在底层），按钮仍可点击。
+        // 放在选项按钮之前创建（渲染在底层），按钮仍可点击。
         StretchImg("ReplayBlocker", replayPanel.transform, new Color(0f, 0f, 0f, 0f));
-        Btn("ReplayYes", replayPanel.transform, new Vector2(0.5f, 0.5f), new Vector2(-290, -52), new Vector2(520, 84),
+        Btn("ReplayCur", replayPanel.transform, new Vector2(0.5f, 0.5f), new Vector2(-460, -54), new Vector2(440, 84),
             GlassBlue, ChooseReplay);
-        Btn("ReplayNo", replayPanel.transform, new Vector2(0.5f, 0.5f), new Vector2(290, -52), new Vector2(520, 84),
+        Btn("ReplayOrig", replayPanel.transform, new Vector2(0.5f, 0.5f), new Vector2(0, -54), new Vector2(440, 84),
+            GlassBlue, ChooseReplayOriginal);
+        Btn("ReplayNo", replayPanel.transform, new Vector2(0.5f, 0.5f), new Vector2(460, -54), new Vector2(440, 84),
             GlassNeutral, DismissReplay);
         replayCG = replayPanel.AddComponent<CanvasGroup>();
         replayCG.alpha = 0f;
         replayCG.blocksRaycasts = false;
         replayCG.interactable = false;
+
+        // ---- v0.53：双方同意的"复位上一杆"对话框（手动悔棋；两人都同意才生效）----
+        // 版式（设计坐标，面板中心 960,560、1200×480 → x 360..1560 / y 320..800）：
+        //   标题 390 · 副标题 428 · P1 行 520（名字 560，同意 1060，不同意 1390）
+        //   P2 行 640 · 确认 750(770) / 取消 750(1250)。IMGUI 文字与 uGUI 按钮逐一对齐。
+        // uGUI 局部坐标 = 设计坐标 − 面板中心(960,560) 后，y 取反（uGUI y 向上）。
+        var repGlass = UIGlass.Add(mgo.transform, "ReplacePanel", new Vector2(0.5f, 0.5f), new Vector2(0, -20), new Vector2(1200, 480),
+            GlassPanel, 40f);
+        repGlass.raycastTarget = true;
+        replacePanel = repGlass.gameObject;
+        repGlass.AttachShadow(16f, -8f, 0.24f, 20f);
+        StretchImg("ReplaceBlocker", replacePanel.transform, new Color(0f, 0f, 0f, 0f));
+        // 玩家1 行（局部 y=+40 → 设计 520）
+        Btn("RepP1Yes", replacePanel.transform, new Vector2(0.5f, 0.5f), new Vector2(100, 40), new Vector2(260, 76),
+            GlassGreen, () => ToggleReplaceAgree(0, true));
+        Btn("RepP1No", replacePanel.transform, new Vector2(0.5f, 0.5f), new Vector2(430, 40), new Vector2(260, 76),
+            GlassNeutral, () => ToggleReplaceAgree(0, false));
+        // 玩家2 行（局部 y=-80 → 设计 640）
+        Btn("RepP2Yes", replacePanel.transform, new Vector2(0.5f, 0.5f), new Vector2(100, -80), new Vector2(260, 76),
+            GlassGreen, () => ToggleReplaceAgree(1, true));
+        Btn("RepP2No", replacePanel.transform, new Vector2(0.5f, 0.5f), new Vector2(430, -80), new Vector2(260, 76),
+            GlassNeutral, () => ToggleReplaceAgree(1, false));
+        // 确认/取消（局部 y=-190 → 设计 750）
+        Btn("RepConfirm", replacePanel.transform, new Vector2(0.5f, 0.5f), new Vector2(-190, -190), new Vector2(420, 92),
+            GlassGreen, () => GameManager.I.ConfirmReplace(), true);
+        Btn("RepCancel", replacePanel.transform, new Vector2(0.5f, 0.5f), new Vector2(290, -190), new Vector2(420, 92),
+            GlassNeutral, () => GameManager.I.CancelReplace());
+        replaceCG = replacePanel.AddComponent<CanvasGroup>();
+        replaceCG.alpha = 0f;
+        replaceCG.blocksRaycasts = false;
+        replaceCG.interactable = false;
+
+        // ---- v0.53：Aiming 期的"复位上一杆"入口按钮（放在"重新开局/设置"一行的右侧）----
+        Btn("ReplaceBtn", cgo.transform, new Vector2(0.5f, 0.5f),
+            Fit(new Vector2(-260, -364), new Vector2(240, 58)), new Vector2(240, 58),
+            GlassNeutral, () => GameManager.I.OpenReplaceDialog());
 
         // 注意：这里的 uiMat 只赋给传统 Image（发丝线/暗化底等）；
         // UIGlass 有自己的材质（磨砂面板= LiquidGlass，其余=默认 UI 材质），必须跳过，
@@ -576,6 +632,15 @@ public class UIManager : MonoBehaviour
             replayCG.alpha = replayAlpha;
             replayCG.blocksRaycasts = replayAlpha > 0.6f;
             replayCG.interactable = replayAlpha > 0.6f;
+        }
+
+        // ---- v0.53：复位对话框淡入淡出 ----
+        replaceAlpha = Mathf.MoveTowards(replaceAlpha, replaceOpen ? 1f : 0f, Time.deltaTime / 0.25f);
+        if (replaceCG != null)
+        {
+            replaceCG.alpha = replaceAlpha;
+            replaceCG.blocksRaycasts = replaceAlpha > 0.6f;
+            replaceCG.interactable = replaceAlpha > 0.6f;
         }
     }
 
@@ -764,7 +829,7 @@ public class UIManager : MonoBehaviour
         {
             var sheen = UIGlass.Add(go.transform, name + "Sheen", new Vector2(0.5f, 0.5f),
                 new Vector2(0, size.y * 0.24f), new Vector2(size.x - 16, size.y * 0.5f),
-                new Color(1f, 1f, 1f, primary ? 0.16f : 0.30f), 0f, true);
+                new Color(1f, 1f, 1f, primary ? 0.08f : 0.14f), 0f, true);   // v0.53：高光条减半（去白）
             sheen.raycastTarget = false;
         }
         var b = go.GetComponent<Button>();
@@ -797,7 +862,7 @@ public class UIManager : MonoBehaviour
         go.GetComponent<Image>().color = Color.clear;            // 根节点=透明热区（Slider 命中测试用）
 
         // 轨道：白色玻璃胶囊（iOS 滑杆的半透轨道）
-        var track = UIGlass.Add(rt, "Track", new Vector2(0.5f, 0.5f), Vector2.zero, size, new Color(1f, 1f, 1f, 0.18f), 0f, true);
+        var track = UIGlass.Add(rt, "Track", new Vector2(0.5f, 0.5f), Vector2.zero, size, new Color(1f, 1f, 1f, 0.12f), 0f, true);
         track.UseRefraction(1.5f, 12f, 1.3f, 0.9f, 0.6f, 0.55f);
         track.raycastTarget = false;
 
@@ -971,6 +1036,34 @@ public class UIManager : MonoBehaviour
         GameManager.I.RequestReplay();
     }
 
+    /// v0.53：选择"要求犯规方从原始位置重打"（Rule 14(b) 第 2 选项）。
+    void ChooseReplayOriginal()
+    {
+        replayPrompt = false;
+        replayShown = false;
+        GameManager.I.RequestReplayFromOriginal();
+    }
+
+    // =================================================================================
+    // v0.53：双方同意的"复位上一杆"对话框
+    // =================================================================================
+    /// GameManager 请求打开（真值记在 GameManager）。
+    public void ShowReplaceDialog()
+    {
+        repP1Agree = repP2Agree = false;
+        replaceOpen = true;
+    }
+
+    /// GameManager 请求关闭。
+    public void HideReplaceDialog() { replaceOpen = false; }
+
+    /// 某个开关：玩家 player 选择同意/不同意（本地镜像 + 同步给 GameManager）。
+    void ToggleReplaceAgree(int player, bool agree)
+    {
+        if (player == 0) repP1Agree = agree; else repP2Agree = agree;
+        GameManager.I.SetReplaceAgree(player, agree);
+    }
+
     // =================================================================================
     // IMGUI 文字层
     // =================================================================================
@@ -993,7 +1086,7 @@ public class UIManager : MonoBehaviour
         style.alignment = anchor;
         style.wordWrap = false;
 
-        style.normal.textColor = new Color(0f, 0f, 0f, 0.22f * col.a);   // 投影（玻璃更透后适当加重，保文字对比度）
+        style.normal.textColor = new Color(0f, 0f, 0f, 0.42f * col.a);   // 投影（v0.53：玻璃更透，加重投影保对比度）
         Rect sr = new Rect(r.x + 2, r.y + 2, r.width, r.height);
         GUI.Label(sr, text, style);
 
@@ -1039,6 +1132,7 @@ public class UIManager : MonoBehaviour
             DrawLabel(FittedRect(374, 1080 - 92, 70, 62), "▶", FontArrow, ink, TextAnchor.MiddleCenter);
             DrawLabel(FittedRect(140, 1080 - 176, 240, 58), "重新开局", FontBtn, Fade(TextRed), TextAnchor.MiddleCenter);
             DrawLabel(FittedRect(420, 1080 - 176, 240, 58), "设 置", FontBtn, ink, TextAnchor.MiddleCenter);
+            DrawLabel(FittedRect(700, 1080 - 176, 240, 58), "复位上一杆", FontBtn, ink, TextAnchor.MiddleCenter);  // v0.53
 
             // ---- v0.36：加塞圆盘文字（与 uGUI 面板逐像素对齐）----
             // 面板中心设计 y=700、尺寸 250×310；圆盘中心设计 y=708、半径 75
@@ -1047,10 +1141,12 @@ public class UIManager : MonoBehaviour
             DrawLabel(FittedRect(1700, 805, 240, 40), spinPad != null ? spinPad.Describe() : "中杆", FontSub, ink, TextAnchor.MiddleCenter);
 
             // ---- v0.36："球在手"提示（开球前 / 白球落袋后可在 D 区内拖动白球）----
+            // v0.53：挪到左侧、左对齐（与上方 CueHandPill 胶囊同心同位），不再居中挡台面。
+            // FittedRect(cx,cy,w,h) 的 cx 是矩形中心；左对齐时文字左缘 = cx - w/2 = 36。
             var gmx = GameManager.I;
             if (gmx != null && gmx.cueInHand && settingsAlpha < 0.4f)
-                DrawLabel(FittedRect(960, 300, 1100, 52), "球在手：拖动白球可在开球区 D 内自由摆放", FontMsg,
-                    ink, TextAnchor.MiddleCenter);
+                DrawLabel(FittedRect(366, 300, 660, 52), "球在手：拖动白球可在开球区 D 内自由摆放", FontMsg,
+                    ink, TextAnchor.MiddleLeft);
         }
 
         // ---- 主菜单（文字随菜单整体淡入；设置面板打开时再淡出避免与面板重叠）----
@@ -1161,17 +1257,43 @@ public class UIManager : MonoBehaviour
             DrawLabel(CRect(770, poy + 28, 420, 50), "红黑连击 " + popupPairsText, FontSub, ink2, TextAnchor.MiddleLeft);
         }
 
-        // ---- v0.35：让对手重打 提示文字（Rule 11(b) 犯规与未击到）----
-        // uGUI 底图中心锚定 y=-300 → IMGUI 设计 y = 540+300 = 840
+        // ---- v0.35：让对手重打 提示文字（Rule 11(b) 犯规与未击到）；v0.53 三选一 ----
+        // uGUI 底图中心锚定 y=-285 → IMGUI 设计 y = 540+285 = 825；三按钮 uGUI y=-54
+        // （相对面板）→ 设计 y = 825+54 = 879，x = 500/960/1420。
         if (replayAlpha > 0.01f)
         {
             Color ink = Ink; ink.a *= replayAlpha;            // 白玻璃弹层上的墨色标题
             Color ink2 = Ink2; ink2.a *= replayAlpha;
             Color w = Color.white; w.a *= replayAlpha;        // 蓝色主按钮上的白字
-            DrawLabel(CRect(960, 792, 1100, 56), "对方犯规且未击中球（Miss）", FontMsg, ink, TextAnchor.MiddleCenter);
-            DrawLabel(CRect(960, 836, 1100, 44), "请先选择再击球 · 规则允许要求对方从当前球位重打", FontSub, ink2, TextAnchor.MiddleCenter);
-            DrawLabel(CRect(670, 888, 520, 84), "让对手重打", FontLayer, w, TextAnchor.MiddleCenter);
-            DrawLabel(CRect(1250, 888, 520, 84), "我自己打", FontLayer, ink, TextAnchor.MiddleCenter);
+            string chooser = GameManager.I != null ? GameManager.I.names[GameManager.I.cur] : "接台方";
+            DrawLabel(CRect(960, 758, 1440, 52), "对方犯规且未击中球（Miss）· " + chooser + " 请选择",
+                FontMsg, ink, TextAnchor.MiddleCenter);
+            DrawLabel(CRect(960, 800, 1440, 40), "规则 14(b)：从当前位置重打 / 从原始位置重打（整盘复位）/ 自己击球",
+                FontSub, ink2, TextAnchor.MiddleCenter);
+            DrawLabel(CRect(500, 879, 440, 84), "从当前位置重打", FontLayer, w, TextAnchor.MiddleCenter);
+            DrawLabel(CRect(960, 879, 440, 84), "从原始位置重打", FontLayer, w, TextAnchor.MiddleCenter);
+            DrawLabel(CRect(1420, 879, 440, 84), "我自己打", FontLayer, ink, TextAnchor.MiddleCenter);
+        }
+
+        // ---- v0.53：双方同意的复位对话框文字（与 uGUI 按钮逐一对齐） ----
+        if (replaceAlpha > 0.01f)
+        {
+            Color ink = Ink; ink.a *= replaceAlpha;
+            Color ink2 = Ink2; ink2.a *= replaceAlpha;
+            Color w = Color.white; w.a *= replaceAlpha;
+            // 面板 uGUI y=-20 → 设计 y=560；行 y=+40/-80 → 设计 520/640；确认行 y=-190 → 750
+            DrawLabel(CRect(960, 392, 1120, 56), "复位到上一杆开始前（需双方同意）", FontMsg, ink, TextAnchor.MiddleCenter);
+            DrawLabel(CRect(960, 430, 1120, 40), "两人都同意才生效；任一方不同意则取消", FontSub, ink2, TextAnchor.MiddleCenter);
+            // 玩家1 行（名字左对齐在 380..860 的中点 620；开关中心设计 x = 960+100=1060 / 960+430=1390）
+            DrawLabel(CRect(620, 520, 460, 56), GameManager.I.names[0], FontBtn, ink, TextAnchor.MiddleLeft);
+            DrawLabel(CRect(1060, 520, 260, 76), "同意", FontBtn, repP1Agree ? w : ink, TextAnchor.MiddleCenter);
+            DrawLabel(CRect(1390, 520, 260, 76), "不同意", FontBtn, !repP1Agree ? w : ink, TextAnchor.MiddleCenter);
+            // 玩家2 行
+            DrawLabel(CRect(620, 640, 460, 56), GameManager.I.names[1], FontBtn, ink, TextAnchor.MiddleLeft);
+            DrawLabel(CRect(1060, 640, 260, 76), "同意", FontBtn, repP2Agree ? w : ink, TextAnchor.MiddleCenter);
+            DrawLabel(CRect(1390, 640, 260, 76), "不同意", FontBtn, !repP2Agree ? w : ink, TextAnchor.MiddleCenter);
+            DrawLabel(CRect(770, 750, 420, 92), "确认复位", FontPrimary, w, TextAnchor.MiddleCenter);
+            DrawLabel(CRect(1250, 750, 420, 92), "取消", FontPrimary, ink, TextAnchor.MiddleCenter);
         }
 
         // ---- v0.35：自由球 / 指定彩球 状态提示（HUD 中央行下方）----
