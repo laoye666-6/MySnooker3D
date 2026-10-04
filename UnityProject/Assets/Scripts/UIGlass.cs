@@ -84,8 +84,10 @@ public class UIGlass : MaskableGraphic
                               float spec = 1.0f, float edgeAlpha = 0.6f, float crisp = 0.55f,
                               float glow = 0.55f)
     {
+        // v0.54：edgeAlpha 系数 0.65→0.85 —— shader 边缘 alpha 由"加法"改为"乘法"后
+        // （修淡出残影，见 LiquidGlass.frag），边缘抬升相对变弱，这里补一点回来。
         UseLiquid(0.08f, crisp * 0.85f, refr * 0.55f, bulge, 34f, 30f, 26f, 2f,
-                  0.10f, 0.10f, 0.12f, 0.12f, spec * 0.18f, edgeAlpha * 0.65f, 0.10f, 0.03f, 0.06f);
+                  0.10f, 0.10f, 0.12f, 0.12f, spec * 0.18f, edgeAlpha * 0.85f, 0.10f, 0.03f, 0.06f);
     }
 
     /// <summary>

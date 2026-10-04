@@ -193,8 +193,12 @@ Shader "UI/LiquidGlass"
                 col += _Rim * pow(max(band, 1e-4), 6.0);          // 最边缘细亮边（底数钳住：GLES pow(0,k)=NaN）
                 col = col * (1.0 - _Lift) + _Lift;
 
-                // 边缘更"实"：alpha 随贴边程度抬升
-                float alpha = saturate(i.color.a + _EdgeAlpha * band2);
+                // 边缘更"实"：alpha 随贴边程度抬升。
+                // v0.54 关键修复：必须【乘法】抬升（a * (1+edge)），不能加法（a + edge）。
+                // 加法时 a=0 的元素在边缘仍有 0.4+ 的 alpha —— 菜单/面板淡出后只留下
+                // 一圈"玻璃轮廓幽灵"叠在台面上（v0.53 实测：菜单按钮的两条胶囊轮廓
+                // 在游戏画面里一直可见，看起来像 UI 与台面重叠）。乘法保证 a=0 → 彻底消失。
+                float alpha = saturate(i.color.a * (1.0 + _EdgeAlpha * band2));
                 return fixed4(col, alpha);
             }
             ENDCG

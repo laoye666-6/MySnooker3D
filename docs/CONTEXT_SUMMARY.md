@@ -1,4 +1,4 @@
-# 双人斯诺克 3D —— 项目上下文总结（截至 v0.53，2026-10-04）
+# 双人斯诺克 3D —— 项目上下文总结（截至 v0.54，2026-10-04）
 
 > 本文件为完整压缩上下文，供导入 AI 助手继续开发使用。
 > 项目根目录：`E:\Snooker`（工作区）；Unity 工程：`E:\Snooker3D`
@@ -127,7 +127,7 @@ adb shell screencap -p /sdcard/a.png && adb pull /sdcard/a.png E:/Snooker/shots/
 :: MuMu 被关（宿主睡眠/杀 adb 后）→ MuMuManager.exe control -v 0 launch 重启（约 55 秒）
 ```
 
-## 五、近五版改动（v0.49~v0.53）
+## 五、近五版改动（v0.50~v0.54）
 
 ### v0.53 —— 复选项 + 玻璃更透 + 球在手通知 + 袋口库边（2026-10-04）
 - **① 球在手提示移到左上**：原居中胶囊（1100×52）横跨台面挡视线 → 左侧紧凑胶囊（660×52，
@@ -145,6 +145,26 @@ adb shell screencap -p /sdcard/a.png && adb pull /sdcard/a.png E:/Snooker/shots/
   视角能看穿库边端头下方露出木框暗井（资产本身闭合无缺面）。`make_table.py` 给库边加**下摆**
   （底边 z=-0.055）+ 袋井 0.40→0.44，重导 table.obj。排查法：低机位渲染（render_pocket_diag.py）。
 - 回归：规则 **65/65**（+7 断言）、库边 3×bounced、ALL SPIN OK、袋口 PASS=6；ShotTest 16 帧。
+
+### v0.54b —— 紧急修 UI 重叠（2026-10-04，同 v0.54 发布）
+- **① shader 轮廓幽灵**：LiquidGlass 边缘 alpha 是加法（a + edge），alpha=0 后边缘仍 0.4+
+  → 菜单/面板淡出后留下"胶囊轮廓"浮在台面上（用户报的"UI 重叠"）。改**乘法**
+  `a*(1+edge)`；UseRefraction edgeAlpha 系数 0.65→0.85 补偿。
+- **② 模态压 HUD**：Miss 选框/复位弹窗/设置面板期间 HUD 未让位，且 IMGUI 永远在 uGUI 之上
+  → 底部按钮/力度条文字穿透面板。HUD 条件追加 `!replayPrompt && !replaceOpen && settingsAlpha<0.4`。
+- **③ 文字切边**：球在手胶囊文字与胶囊同宽（660）首字被圆角切；中央提示 1400 同样顶边。
+  文字宽改 612 / 1330（左右留 24~35px 内边距）。
+- 排查法：同坐标裁剪对比"有/无面板"两帧判穿透；台面做灰白像素阈值扫描找残影。
+
+### v0.54 —— UI 动画按 Apple/Emil 动效原则收敛（2026-10-04）
+- 全部线性 `MoveTowards` 淡入淡出 → 帧率无关指数 ease-out `UIManager.EaseTo(cur,target,dt,respIn,respOut)`：
+  入 0.14~0.30s、**出 0.10~0.16s（出比入快）**；从当前表现值出发、可中断改向。
+- 结算卡片弹簧：起点 scale 0.72→**0.92**（"无物凭空出现"）、阻尼 19→21（ζ≈0.78，过冲 ~2%）。
+- UIJelly：按压 (0.90,0.84)→**(0.96,0.93)**、阻尼 13→18、wobble 0.85→0.96；滑块手柄 1.16→1.08。
+- Miss 选框/复位弹窗：纯淡入 → 淡入 + **scale 0.96→1**（materialize，modal 居中缩放）。
+- 147 横幅入 0.45→0.35s、出线性 0.35→**0.25s easeOutCubic**；结算内比分/最高单杆/再来一局
+  alpha 全部 easeOutCubic。设置面板入 0.30/出 0.20。
+- 只动 opacity/transform；高频元素 ≤0.3s。回归 5 道全绿，ShotTest 16 帧复核。
 
 ### v0.52 —— 抬高台球厅吊灯（相机不再被灯挡，2026-10-03）
 - **问题**：跟球机位高 1.18m，灯罩下沿（v0.50 Unity 补丁 +0.30 后）约 1.15m → 视线被灯罩侵入。
@@ -298,6 +318,8 @@ adb shell screencap -p /sdcard/a.png && adb pull /sdcard/a.png E:/Snooker/shots/
 - v0.51 胜利结算动画（卡片 Q 弹/比分跳数/彩纸 UIConfetti/胜利号角 maxBreak 统计）
 - v0.52 抬高台球厅吊灯（罩 1.60 下沿，相机不再被挡；踩坑 46 FBX 逐对象选中）
 - v0.53 复选项 + 玻璃去白边更透 + 球在手移左上 + 袋口库边下摆（规则 65 断言；踩坑 47/48）
+- v0.54 UI 动画收敛（EaseTo 指数 ease-out/出比入快；卡片 0.92 起弹；Jelly subtle；弹窗 materialize）
+- v0.54b 紧急修 UI 重叠（shader 边缘 alpha 乘法化去轮廓幽灵；模态期间 HUD 让位；胶囊内边距）
 
 ## 十一、当前功能全清单（均已验收）
 

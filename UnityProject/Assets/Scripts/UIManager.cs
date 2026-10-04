@@ -63,7 +63,7 @@ public class UIManager : MonoBehaviour
     private bool confettiLaunched;
     private int overWinner, overS0, overS1, overMB0, overMB1;  // 跳数动画的终点数据
     private int shownS0, shownS1;                         // 比分跳数当前显示值（IMGUI 同步）
-    private float overCardScale = 0.72f, overCardVel;     // 卡片弹簧状态（位移/速度）
+    private float overCardScale = 0.92f, overCardVel;     // 卡片弹簧状态（v0.54：起点 0.92——无物凭空出现）
 
     // ---- 147 满分提示横幅（从底部弹出）----
     private RectTransform popupRT;
@@ -78,10 +78,12 @@ public class UIManager : MonoBehaviour
     private float replayAlpha;                            // 淡入淡出
     private GameObject replayPanel;
     private CanvasGroup replayCG;
+    private RectTransform replayRT;                       // v0.54：materialize 缩放用
 
     // ---- v0.53：双方同意的复位对话框 ----
     private GameObject replacePanel;
     private CanvasGroup replaceCG;
+    private RectTransform replaceRT;                      // v0.54：materialize 缩放用
     private float replaceAlpha;
     private bool replaceOpen;                             // 淡入淡出目标
     private bool repP1Agree, repP2Agree;                 // 本地镜像（绘制文字用；真值在 GameManager）
@@ -433,6 +435,7 @@ public class UIManager : MonoBehaviour
             GlassBlue, ChooseReplayOriginal);
         Btn("ReplayNo", replayPanel.transform, new Vector2(0.5f, 0.5f), new Vector2(460, -54), new Vector2(440, 84),
             GlassNeutral, DismissReplay);
+        replayRT = (RectTransform)replayPanel.transform;    // v0.54：materialize 缩放
         replayCG = replayPanel.AddComponent<CanvasGroup>();
         replayCG.alpha = 0f;
         replayCG.blocksRaycasts = false;
@@ -464,6 +467,7 @@ public class UIManager : MonoBehaviour
             GlassGreen, () => GameManager.I.ConfirmReplace(), true);
         Btn("RepCancel", replacePanel.transform, new Vector2(0.5f, 0.5f), new Vector2(290, -190), new Vector2(420, 92),
             GlassNeutral, () => GameManager.I.CancelReplace());
+        replaceRT = (RectTransform)replacePanel.transform;  // v0.54：materialize 缩放
         replaceCG = replacePanel.AddComponent<CanvasGroup>();
         replaceCG.alpha = 0f;
         replaceCG.blocksRaycasts = false;
@@ -497,12 +501,13 @@ public class UIManager : MonoBehaviour
     {
         var gm = GameManager.I;
 
-        // ---- 菜单透明度：入场 3.0s 起淡入 0.8s（与相机俯冲衔接）；开始游戏后快速淡出 ----
+        // ---- 菜单透明度（v0.54：指数 ease-out——入场运镜 3.0s 一到即开始趋近，平滑交给
+        //      EaseTo；开始游戏后快速淡出。旧版线性 MoveTowards 观感生硬且"先慢后快"）----
         float menuTarget;
         if (menuActiveFlag && gm != null && gm.state == GameManager.State.Menu)
-            menuTarget = Mathf.Clamp01((Time.timeSinceLevelLoad - 3.0f) / 0.8f);
+            menuTarget = (Time.timeSinceLevelLoad - 3.0f) > 0f ? 1f : 0f;
         else menuTarget = 0f;
-        menuAlpha = Mathf.MoveTowards(menuAlpha, menuTarget, Time.deltaTime / 0.45f);
+        menuAlpha = EaseTo(menuAlpha, menuTarget, Time.deltaTime, 0.30f, 0.16f);
         if (menuCG != null)
         {
             menuCG.alpha = menuAlpha;
@@ -510,9 +515,9 @@ public class UIManager : MonoBehaviour
             menuCG.interactable = menuAlpha > 0.6f;
         }
 
-        // ---- 结算面板淡入淡出 ----
+        // ---- 结算面板淡入淡出（v0.54：ease-out，出比入快）----
         float overTarget = overActiveFlag ? 1f : 0f;
-        overAlpha = Mathf.MoveTowards(overAlpha, overTarget, Time.deltaTime / 0.3f);
+        overAlpha = EaseTo(overAlpha, overTarget, Time.deltaTime, 0.26f, 0.16f);
         if (overCG != null)
         {
             overCG.alpha = overAlpha;
@@ -526,15 +531,18 @@ public class UIManager : MonoBehaviour
         {
             overT += Time.deltaTime;
 
-            // 胜者卡片：0.10s 起淡入 0.15s + 欠阻尼弹簧缩放 0.72→1（刚度 180/阻尼 19，
-            // ζ≈0.71 → 过冲 ~4%，与 UIJelly 同款半隐式欧拉积分）
+            // 胜者卡片：0.10s 起 ease-out 淡入 + 弹簧缩放 0.92→1（v0.54 重调：起点 0.92
+            // 而非 0.72——"无物凭空出现"；刚度 180/阻尼 21，ζ≈0.78 → 过冲 ~2%，观感干净）
             if (overCardCG != null)
-                overCardCG.alpha = Mathf.Clamp01((overT - 0.10f) / 0.15f);
+            {
+                float ca = Mathf.Clamp01((overT - 0.10f) / 0.15f);
+                overCardCG.alpha = 1f - Mathf.Pow(1f - ca, 3f);          // easeOutCubic
+            }
             if (overT > 0.10f)
             {
                 float dt = Mathf.Min(Time.deltaTime, 0.033f);
                 overCardVel += (1f - overCardScale) * 180f * dt;
-                overCardVel *= Mathf.Exp(-19f * dt);
+                overCardVel *= Mathf.Exp(-21f * dt);
                 overCardScale += overCardVel * dt;
             }
             if (overCardRT != null)
@@ -553,19 +561,20 @@ public class UIManager : MonoBehaviour
                 confetti.Launch(1.6f);
             }
 
-            // "再来一局"：0.55s 起淡入 0.3s，淡入完成才开射线（防止截住半透明按钮的点击）
+            // "再来一局"：0.55s 起 ease-out 淡入，淡入完成才开射线（防止截住半透明按钮的点击）
             if (againCG != null)
             {
                 float at = Mathf.Clamp01((overT - 0.55f) / 0.30f);
+                at = 1f - Mathf.Pow(1f - at, 3f);                        // easeOutCubic
                 againCG.alpha = at;
                 againCG.blocksRaycasts = at > 0.9f;
                 againCG.interactable = at > 0.9f;
             }
         }
 
-        // ---- 设置面板滑入滑出（easeOutCubic）----
+        // ---- 设置面板滑入滑出（easeOutCubic；v0.54：入 0.30 / 出 0.20——出比入快）----
         settingsAnimT = Mathf.MoveTowards(settingsAnimT, settingsOpen ? 1f : 0f,
-            Time.deltaTime / (settingsOpen ? 0.35f : 0.25f));
+            Time.deltaTime / (settingsOpen ? 0.30f : 0.20f));
         float e = 1f - Mathf.Pow(1f - settingsAnimT, 3f);            // easeOutCubic
         settingsOffset = (1f - e) * 1300f;                           // 从右侧 1300 设计像素滑入
         settingsAlpha = settingsAnimT;
@@ -580,24 +589,30 @@ public class UIManager : MonoBehaviour
 
         if (msgTimer > 0f) msgTimer -= Time.deltaTime;
 
-        // ---- v0.44：中央提示胶囊底随文字显隐（显示条件与 OnGUI 的文字逐字对应）----
+        // ---- v0.44：中央提示胶囊底随文字显隐（v0.54：ease-out，快进快出）----
         if (msgPillCG != null)
         {
             float pillTarget = (msgTimer > 0f && settingsAlpha < 0.4f) ? 1f : 0f;
-            msgPillCG.alpha = Mathf.MoveTowards(msgPillCG.alpha, pillTarget, Time.deltaTime / 0.15f);
+            msgPillCG.alpha = EaseTo(msgPillCG.alpha, pillTarget, Time.deltaTime, 0.14f, 0.10f);
             bool cueVis = gm != null && gm.cueInHand && settingsAlpha < 0.4f;
-            cueHandPillCG.alpha = Mathf.MoveTowards(cueHandPillCG.alpha, cueVis ? 1f : 0f, Time.deltaTime / 0.15f);
+            cueHandPillCG.alpha = EaseTo(cueHandPillCG.alpha, cueVis ? 1f : 0f, Time.deltaTime, 0.14f, 0.10f);
             bool ballVis = gm != null && gm.state == GameManager.State.Aiming && settingsAlpha < 0.4f &&
                            (gm.freeBallActive || gm.freeColorPending || gm.colorsPhase);
-            ballOnPillCG.alpha = Mathf.MoveTowards(ballOnPillCG.alpha, ballVis ? 1f : 0f, Time.deltaTime / 0.15f);
+            ballOnPillCG.alpha = EaseTo(ballOnPillCG.alpha, ballVis ? 1f : 0f, Time.deltaTime, 0.14f, 0.10f);
             if (ballOnPill != null)                          // 自由球=薄荷底，指定彩球=白底
                 ballOnPill.color = (gm != null && gm.freeBallActive) ? MintPill : GlassStrong;
         }
 
-        // ---- HUD 显隐（v0.34）：只在 Aiming/Rolling 显示 ----
+        // ---- HUD 显隐（v0.34）：只在 Aiming/Rolling 显示（v0.54：ease-out，出更快）----
         // 菜单期与结算期淡出，既消除"文字亮、按钮暗"的层级矛盾，也防止在菜单里点到击球/力度。
-        bool hudWant = gm != null && (gm.state == GameManager.State.Aiming || gm.state == GameManager.State.Rolling);
-        hudAlpha = Mathf.MoveTowards(hudAlpha, hudWant ? 1f : 0f, Time.deltaTime / 0.25f);
+        // v0.54：Miss 选框 / 复位对话框 / 设置面板打开时同样淡出——这些模态面板占屏幕中部，
+        // 与 HUD 底部按钮行（重新开局/设置/复位上一杆）、右侧力度条/加塞盘在 16:9 上直接重叠；
+        // 且 IMGUI 永远画在 uGUI 之上（v0.38 教训），HUD 文字会"浮"在暗化层上面穿透面板
+        // （实测：'重新开局/设置/复位上一杆/击球点/力度' 全都在设置面板上可见）。
+        // 判断用 UI 自身开关：replayPrompt/replaceOpen 与面板淡入同一真值源；设置用 settingsAlpha。
+        bool hudWant = gm != null && (gm.state == GameManager.State.Aiming || gm.state == GameManager.State.Rolling)
+                       && !replayPrompt && !replaceOpen && settingsAlpha < 0.4f;
+        hudAlpha = EaseTo(hudAlpha, hudWant ? 1f : 0f, Time.deltaTime, 0.20f, 0.14f);
         if (hudCG != null)
         {
             hudCG.alpha = hudAlpha;
@@ -605,14 +620,16 @@ public class UIManager : MonoBehaviour
             hudCG.interactable = hudAlpha > 0.5f;
         }
 
-        // ---- 147 横幅动画：0.45s easeOutCubic 弹入 → 停留 → 0.35s 收回 ----
+        // ---- 147 横幅动画（v0.54：入 0.35s easeOutCubic → 停留 → 出 0.25s easeOutCubic；
+        //      出场必须快于入场，线性淡出观感拖沓）----
         if (popupTimer > 0f)
         {
             popupTimer -= Time.deltaTime;
             float elapsed = 3.6f - popupTimer;
-            float eIn = Mathf.Clamp01(elapsed / 0.45f);
+            float eIn = Mathf.Clamp01(elapsed / 0.35f);
             eIn = 1f - Mathf.Pow(1f - eIn, 3f);              // easeOutCubic 弹入
-            float cOut = Mathf.Clamp01(popupTimer / 0.35f);  // 收回进度
+            float cOut = Mathf.Clamp01(popupTimer / 0.25f);  // 收回进度
+            cOut = 1f - Mathf.Pow(1f - cOut, 3f);            // easeOutCubic 收回
             popupAlpha = Mathf.Min(eIn, cOut);
             popupYoff = (1f - eIn) * 760f;                   // 从屏幕底之外(760)滑到目标位
         }
@@ -624,23 +641,33 @@ public class UIManager : MonoBehaviour
                 popupRT.anchoredPosition = new Vector2(0f, (-270f - popupYoff) * K());
         }
 
-        // ---- v0.35：让对手重打 提示淡入淡出 ----
+        // ---- v0.35：让对手重打 提示（v0.54：ease-out + scale 0.96→1 materialize）----
         float rTarget = replayPrompt ? 1f : 0f;
-        replayAlpha = Mathf.MoveTowards(replayAlpha, rTarget, Time.deltaTime / 0.25f);
+        replayAlpha = EaseTo(replayAlpha, rTarget, Time.deltaTime, 0.22f, 0.14f);
         if (replayCG != null)
         {
             replayCG.alpha = replayAlpha;
             replayCG.blocksRaycasts = replayAlpha > 0.6f;
             replayCG.interactable = replayAlpha > 0.6f;
+            if (replayRT != null)                            // modal 居中缩放（0.96 而非 0：无物凭空出现）
+            {
+                float s = 0.96f + 0.04f * replayAlpha;
+                replayRT.localScale = new Vector3(s, s, 1f);
+            }
         }
 
-        // ---- v0.53：复位对话框淡入淡出 ----
-        replaceAlpha = Mathf.MoveTowards(replaceAlpha, replaceOpen ? 1f : 0f, Time.deltaTime / 0.25f);
+        // ---- v0.53：复位对话框（v0.54：同款 ease-out + materialize）----
+        replaceAlpha = EaseTo(replaceAlpha, replaceOpen ? 1f : 0f, Time.deltaTime, 0.22f, 0.14f);
         if (replaceCG != null)
         {
             replaceCG.alpha = replaceAlpha;
             replaceCG.blocksRaycasts = replaceAlpha > 0.6f;
             replaceCG.interactable = replaceAlpha > 0.6f;
+            if (replaceRT != null)
+            {
+                float s = 0.96f + 0.04f * replaceAlpha;
+                replaceRT.localScale = new Vector3(s, s, 1f);
+            }
         }
     }
 
@@ -648,6 +675,18 @@ public class UIManager : MonoBehaviour
     private float K()
     {
         return Mathf.Sqrt((Screen.width / 1920f) * (Screen.height / 1080f));
+    }
+
+    /// <summary>
+    /// v0.54：帧率无关的 ease-out 平滑（指数趋近），替代线性 MoveTowards 淡入淡出。
+    /// 从【当前表现值】出发、可随时改向（Apple "animate from the presentation value"）；
+    /// response = 趋近时间常数（秒，Apple 的 response 参数）——入用慢的（0.14~0.30），
+    /// 出用快的（0.10~0.16）：出场必须快于入场。
+    /// </summary>
+    private static float EaseTo(float cur, float target, float dt, float respIn, float respOut)
+    {
+        float resp = target > cur ? respIn : respOut;
+        return Mathf.Lerp(cur, target, 1f - Mathf.Exp(-dt / Mathf.Max(0.02f, resp)));
     }
 
     /// <summary>
@@ -908,8 +947,9 @@ public class UIManager : MonoBehaviour
 
         // 手柄 Q 弹：拖住时放大、松手弹回（手柄自身不接收射线，由滑条根物体驱动）
         var knobJelly = handle.AddComponent<UIJelly>();
-        knobJelly.pressScale = new Vector2(1.16f, 1.16f);
+        knobJelly.pressScale = new Vector2(1.08f, 1.08f);    // v0.54：1.16→1.08（subtle）
         knobJelly.stiffness = 340f;
+        knobJelly.damping = 20f;                             // v0.54：ζ≈0.54，轻微回弹
         var s = go.GetComponent<Slider>();
         s.fillRect = fRt;
         s.handleRect = hRt;
@@ -991,7 +1031,7 @@ public class UIManager : MonoBehaviour
             overMB0 = mb0; overMB1 = mb1;
             overT = 0f;                                  // 时间线起表
             shownS0 = shownS1 = 0;                       // 跳数从 0 起数
-            overCardScale = 0.72f; overCardVel = 0f;     // 卡片弹簧复位
+            overCardScale = 0.92f; overCardVel = 0f;     // 卡片弹簧复位（v0.54：起点 0.92）
             confettiLaunched = false;
             if (confetti != null) confetti.ResetState();
             Sfx.Win();                                   // 胜利号角（SfxOn 关闭/测试环境静默）
@@ -1122,7 +1162,9 @@ public class UIManager : MonoBehaviour
             // v0.38：设置面板打开时不再画"XX 击球"提示——IMGUI 永远画在 uGUI 之上，
             // 会穿透设置面板标题条（真机截图确认）。同理下方"球在手"提示也受此保护。
             if (settingsAlpha < 0.4f)
-                DrawLabel(FittedRect(960, 160, 1400, 64), msgText, FontMsg, ink, TextAnchor.MiddleCenter);
+                // v0.54：文字宽由 1400→1330（左右各 35px 内边距）——否则长文案（犯规说明等）
+                // 会顶到/溢出胶囊边缘；中心锚定下 cx 仍是 960，位置不变。
+                DrawLabel(FittedRect(960, 160, 1330, 64), msgText, FontMsg, ink, TextAnchor.MiddleCenter);
             DrawLabel(FittedRect(1560, 922, 300, 44), powerText, FontBtn, ink, TextAnchor.MiddleCenter);
 
             // ---- HUD 按钮文字（与上面 Btn/Fit 的位置逐一对齐）----
@@ -1142,10 +1184,11 @@ public class UIManager : MonoBehaviour
 
             // ---- v0.36："球在手"提示（开球前 / 白球落袋后可在 D 区内拖动白球）----
             // v0.53：挪到左侧、左对齐（与上方 CueHandPill 胶囊同心同位），不再居中挡台面。
-            // FittedRect(cx,cy,w,h) 的 cx 是矩形中心；左对齐时文字左缘 = cx - w/2 = 36。
+            // v0.54：文字左右各留 24px 内边距——原与胶囊同宽(660)，首字"球"被圆角切到
+            //（FittedRect 的 cx 是中心：左右各收 24 → cx 仍为 366、宽 612）。
             var gmx = GameManager.I;
             if (gmx != null && gmx.cueInHand && settingsAlpha < 0.4f)
-                DrawLabel(FittedRect(366, 300, 660, 52), "球在手：拖动白球可在开球区 D 内自由摆放", FontMsg,
+                DrawLabel(FittedRect(366, 300, 612, 52), "球在手：拖动白球可在开球区 D 内自由摆放", FontMsg,
                     ink, TextAnchor.MiddleLeft);
         }
 
@@ -1181,7 +1224,8 @@ public class UIManager : MonoBehaviour
                 GameManager.I.names[overWinner] + " 获胜！", FontOver, winCol, TextAnchor.MiddleCenter);
 
             // 比分跳数（0.40s 起随跳数进度淡入）：胜者数字用胜者色，大字 FontBanner
-            float scoreA = Mathf.Clamp01((overT - 0.40f) / 0.30f) * cardA;
+            float sT = Mathf.Clamp01((overT - 0.40f) / 0.30f);
+            float scoreA = (1f - Mathf.Pow(1f - sT, 3f)) * cardA;   // v0.54：easeOutCubic
             Color c0 = ChipBlue; c0.a *= overAlpha * scoreA;
             Color c1 = ChipRed; c1.a *= overAlpha * scoreA;
             Color colon = Ink; colon.a *= overAlpha * scoreA * 0.6f;
@@ -1195,7 +1239,8 @@ public class UIManager : MonoBehaviour
             DrawLabel(CRect(1120, 538, 300, 40), GameManager.I.names[1], FontSub, c1, TextAnchor.MiddleCenter);
 
             // 最高单杆（0.80s 起淡入，次级灰）
-            float mbA = Mathf.Clamp01((overT - 0.80f) / 0.35f) * cardA;
+            float mT = Mathf.Clamp01((overT - 0.80f) / 0.35f);
+            float mbA = (1f - Mathf.Pow(1f - mT, 3f)) * cardA;     // v0.54：easeOutCubic
             Color mbCol = Ink2; mbCol.a *= overAlpha * mbA;
             DrawLabel(CRect(960, 596, 800, 40), "最高单杆  " + overMB0 + " : " + overMB1,
                 FontSub, mbCol, TextAnchor.MiddleCenter);
@@ -1282,8 +1327,8 @@ public class UIManager : MonoBehaviour
             Color ink2 = Ink2; ink2.a *= replaceAlpha;
             Color w = Color.white; w.a *= replaceAlpha;
             // 面板 uGUI y=-20 → 设计 y=560；行 y=+40/-80 → 设计 520/640；确认行 y=-190 → 750
-            DrawLabel(CRect(960, 392, 1120, 56), "复位到上一杆开始前（需双方同意）", FontMsg, ink, TextAnchor.MiddleCenter);
-            DrawLabel(CRect(960, 430, 1120, 40), "两人都同意才生效；任一方不同意则取消", FontSub, ink2, TextAnchor.MiddleCenter);
+            DrawLabel(CRect(960, 382, 1120, 56), "复位到上一杆开始前（需双方同意）", FontMsg, ink, TextAnchor.MiddleCenter);
+            DrawLabel(CRect(960, 424, 1120, 40), "两人都同意才生效；任一方不同意则取消", FontSub, ink2, TextAnchor.MiddleCenter);
             // 玩家1 行（名字左对齐在 380..860 的中点 620；开关中心设计 x = 960+100=1060 / 960+430=1390）
             DrawLabel(CRect(620, 520, 460, 56), GameManager.I.names[0], FontBtn, ink, TextAnchor.MiddleLeft);
             DrawLabel(CRect(1060, 520, 260, 76), "同意", FontBtn, repP1Agree ? w : ink, TextAnchor.MiddleCenter);
