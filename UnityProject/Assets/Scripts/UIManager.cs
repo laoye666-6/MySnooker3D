@@ -47,9 +47,23 @@ public class UIManager : MonoBehaviour
     // ---- IMGUI 文字内容 ----
     private string p1Text = "", p2Text = "";              // 玩家名（单杆分单独绘制，金色大字）
     private string p1Break = "0", p2Break = "0";          // 双方当前单杆分
-    private string centerText = "", msgText = "", overTextStr = "";
+    private string centerText = "", msgText = "";
     private string aimHudText = "", aimMenuText = "", powerText = "";
     private float msgTimer;
+
+    // ---- v0.51：胜利结算动画（终局取代旧版"一行字淡入"）----
+    // 时间线（overT 为 ShowGameOver(true) 起的秒数）：
+    //   0.00 背景磨砂淡入(overCG 现有 0.3s) → 0.10 胜者卡片 Q 弹入场(弹簧过冲 ~4%)
+    //   → 0.40 比分跳数 1.1s(easeOutCubic) → 0.45 彩纸起爆 1.6s → 0.55 "再来一局"淡入
+    private float overT;                                  // 结算动画时钟
+    private RectTransform overCardRT;                     // 胜者卡片（弹簧缩放）
+    private CanvasGroup overCardCG;                       // 卡片淡入
+    private CanvasGroup againCG;                          // "再来一局"按钮延迟淡入
+    private UIConfetti confetti;                          // 彩纸层（零贴图顶点网格）
+    private bool confettiLaunched;
+    private int overWinner, overS0, overS1, overMB0, overMB1;  // 跳数动画的终点数据
+    private int shownS0, shownS1;                         // 比分跳数当前显示值（IMGUI 同步）
+    private float overCardScale = 0.72f, overCardVel;     // 卡片弹簧状态（位移/速度）
 
     // ---- 147 满分提示横幅（从底部弹出）----
     private RectTransform popupRT;
@@ -98,8 +112,8 @@ public class UIManager : MonoBehaviour
     // 中央提示 36/30/24 三种并存、记分板"单杆"22 夹在 30 的玩家名中间）。
     // 值为 1920×1080 设计像素，DrawLabel 内统一乘 K() 缩放到实际分辨率。
     private const int FontTitle   = 76;  // 主菜单大标题
-    private const int FontBanner  = 64;  // 147 横幅"147"大数字
-    private const int FontOver    = 56;  // 结算面板"XX 获胜"
+    private const int FontBanner  = 64;  // 147 横幅"147"大数字 + 结算卡比分跳数
+    private const int FontOver    = 68;  // 结算卡胜者标题（v0.51 从 56 提到 68，配卡片版面）
     private const int FontPrimary = 46;  // 主操作按钮（击球/开始游戏/再来一局）+ 记分板单杆分大数字
     private const int FontHead    = 42;  // 设置面板标题
     private const int FontVal     = 40;  // 设置面板选项值与"完成"按钮
@@ -269,8 +283,50 @@ public class UIManager : MonoBehaviour
         overCG.alpha = 0f;
         overCG.blocksRaycasts = false;
         overCG.interactable = false;
-        Btn("AgainBtn", over.transform, new Vector2(0.5f, 0.5f), new Vector2(0, -140), new Vector2(460, 116),
+
+        // v0.51：胜者卡片（结算动画主角）——Q 弹入场 + 软投影 + 高光环，语言与设置面板一致
+        // 设计版面（y 从顶往下）：卡片中心 408、980×456（180~636）；标题 296 → 比分 470 →
+        // 名字 538 → 最高单杆 596；"再来一局"按钮 720。IMGUI 文字坐标在 OnGUI 一一对应。
+        var overCard = UIGlass.Add(over.transform, "OverCard", new Vector2(0.5f, 0.5f),
+            new Vector2(0, 540 - 408), new Vector2(980, 456), GlassPanel, 40f);
+        overCard.UseBlur(16f, 0.14f, 0.10f, 0.15f);          // 大面板磨砂预设：抓背景模糊
+        overCard.AttachShadow(16f, -8f, 0.24f, 20f);         // 大卡片软投影
+        overCardRT = overCard.GetComponent<RectTransform>();
+        var cardRim = UIGlass.Add(overCard.transform, "OverCardRim", new Vector2(0.5f, 0.5f),
+            Vector2.zero, new Vector2(988, 464), Rim, 44f);
+        cardRim.shape = UIGlass.Shape.Ring;
+        cardRim.rimWidth = 2.4f;
+        cardRim.raycastTarget = false;
+        overCardCG = overCard.gameObject.AddComponent<CanvasGroup>();
+        overCardCG.alpha = 0f;
+
+        // v0.51：彩纸层（零贴图顶点网格，踩坑 4 同路径）——盖在卡片上、按钮下；
+        // 文字仍在 IMGUI 层永远最上，彩纸不会压住任何字。
+        var confGo = new GameObject("OverConfetti", typeof(RectTransform), typeof(CanvasRenderer), typeof(UIConfetti));
+        var confRT = (RectTransform)confGo.transform;
+        confRT.SetParent(over.transform, false);
+        confRT.anchorMin = Vector2.zero;
+        confRT.anchorMax = Vector2.one;
+        confRT.offsetMin = Vector2.zero;
+        confRT.offsetMax = Vector2.zero;
+        confetti = confGo.GetComponent<UIConfetti>();
+        confetti.raycastTarget = false;
+
+        // "再来一局"：下移 40px 给卡片让位（-140→-180）。按钮与其软投影放进同一个
+        // 容器再做延迟淡入——AttachShadow 生成的投影是按钮的【兄弟节点】，若只给按钮
+        // 挂 CanvasGroup，按钮淡入前投影会先暴露成一块灰斑（v0.51 编辑器截图实测）。
+        var againGroup = new GameObject("AgainGroup", typeof(RectTransform));
+        var agRT = (RectTransform)againGroup.transform;
+        agRT.SetParent(over.transform, false);
+        agRT.anchorMin = agRT.anchorMax = new Vector2(0.5f, 0.5f);
+        agRT.anchoredPosition = new Vector2(0, -180);
+        agRT.sizeDelta = new Vector2(460, 116);
+        Btn("AgainBtn", againGroup.transform, new Vector2(0.5f, 0.5f), Vector2.zero, new Vector2(460, 116),
             GlassGreen, () => UnityEngine.SceneManagement.SceneManager.LoadScene(0), true);
+        againCG = againGroup.AddComponent<CanvasGroup>();
+        againCG.alpha = 0f;
+        againCG.blocksRaycasts = false;
+        againCG.interactable = false;
 
         // ---- 设置面板（半透暗化底 + 磨砂玻璃大面板，滑入动画；iOS sheet 风格）----
         var settingsRoot = StretchImg("SettingsDim", mgo.transform, new Color(0f, 0f, 0f, 0f));   // 暗化交给模糊层
@@ -406,6 +462,49 @@ public class UIManager : MonoBehaviour
             overCG.alpha = overAlpha;
             overCG.blocksRaycasts = overAlpha > 0.6f;
             overCG.interactable = overAlpha > 0.6f;
+        }
+
+        // ---- v0.51：胜利结算动画时间线（详见字段区注释；卡片是 overCG 子物体，
+        //      其 CanvasGroup 与磨砂底淡入自动相乘，这里只驱动各自的进度）----
+        if (overActiveFlag)
+        {
+            overT += Time.deltaTime;
+
+            // 胜者卡片：0.10s 起淡入 0.15s + 欠阻尼弹簧缩放 0.72→1（刚度 180/阻尼 19，
+            // ζ≈0.71 → 过冲 ~4%，与 UIJelly 同款半隐式欧拉积分）
+            if (overCardCG != null)
+                overCardCG.alpha = Mathf.Clamp01((overT - 0.10f) / 0.15f);
+            if (overT > 0.10f)
+            {
+                float dt = Mathf.Min(Time.deltaTime, 0.033f);
+                overCardVel += (1f - overCardScale) * 180f * dt;
+                overCardVel *= Mathf.Exp(-19f * dt);
+                overCardScale += overCardVel * dt;
+            }
+            if (overCardRT != null)
+                overCardRT.localScale = new Vector3(overCardScale, overCardScale, 1f);
+
+            // 比分跳数：0.40s 起 1.1s 内 easeOutCubic 数到最终分（IMGUI 侧取 shownS0/S1 绘制）
+            float ct = Mathf.Clamp01((overT - 0.40f) / 1.10f);
+            ct = 1f - Mathf.Pow(1f - ct, 3f);
+            shownS0 = Mathf.RoundToInt(overS0 * ct);
+            shownS1 = Mathf.RoundToInt(overS1 * ct);
+
+            // 彩纸：0.45s 起连爆 1.6s（只起爆一次；重开一局由 ShowGameOver(false) 清场）
+            if (!confettiLaunched && overT > 0.45f && confetti != null)
+            {
+                confettiLaunched = true;
+                confetti.Launch(1.6f);
+            }
+
+            // "再来一局"：0.55s 起淡入 0.3s，淡入完成才开射线（防止截住半透明按钮的点击）
+            if (againCG != null)
+            {
+                float at = Mathf.Clamp01((overT - 0.55f) / 0.30f);
+                againCG.alpha = at;
+                againCG.blocksRaycasts = at > 0.9f;
+                againCG.interactable = at > 0.9f;
+            }
         }
 
         // ---- 设置面板滑入滑出（easeOutCubic）----
@@ -813,11 +912,35 @@ public class UIManager : MonoBehaviour
     /// 显隐主菜单（实际淡入淡出由 Update 驱动）。
     public void ShowMenu(bool on) { menuActiveFlag = on; }
 
-    /// 显隐结算面板并写入胜者与比分（淡入由 Update 驱动）。
-    public void ShowGameOver(bool on, int winner = 0, int s0 = 0, int s1 = 0)
+    /// <summary>
+    /// 显隐结算面板（v0.51：胜利结算动画）。on=true 时写入胜者/终分/最高单杆并重置
+    /// 动画时间线（卡片 Q 弹 + 比分跳数 + 彩纸 + 延迟按钮，推进在 Update）；
+    /// on=false（重开一局）时清掉彩纸与按钮的延迟淡入状态。
+    /// </summary>
+    public void ShowGameOver(bool on, int winner = 0, int s0 = 0, int s1 = 0, int mb0 = 0, int mb1 = 0)
     {
         if (on)
-            overTextStr = GameManager.I.names[winner] + " 获胜！  " + s0 + " : " + s1;
+        {
+            overWinner = winner;
+            overS0 = s0; overS1 = s1;
+            overMB0 = mb0; overMB1 = mb1;
+            overT = 0f;                                  // 时间线起表
+            shownS0 = shownS1 = 0;                       // 跳数从 0 起数
+            overCardScale = 0.72f; overCardVel = 0f;     // 卡片弹簧复位
+            confettiLaunched = false;
+            if (confetti != null) confetti.ResetState();
+            Sfx.Win();                                   // 胜利号角（SfxOn 关闭/测试环境静默）
+        }
+        else
+        {
+            if (confetti != null) confetti.ResetState();
+            if (againCG != null)
+            {
+                againCG.alpha = 0f;
+                againCG.blocksRaycasts = false;
+                againCG.interactable = false;
+            }
+        }
         overActiveFlag = on;
     }
 
@@ -944,13 +1067,44 @@ public class UIManager : MonoBehaviour
             DrawLabel(CRect(960, 540 + 290, 460, 96), "设 置", FontMenuBtn, inkM, TextAnchor.MiddleCenter);
         }
 
-        // ---- 结算面板 ----
+        // ---- 结算面板（v0.51：胜利结算动画文字层，与 uGUI 卡片时间线逐项对齐）----
+        // 卡片版面（设计 y 从顶往下，卡片 180~636）：标题 296 → 比分 470 → 名字 538 →
+        // 最高单杆 596；"再来一局" 720（uGUI 按钮中心锚定 y=-180）。
         if (overAlpha > 0.01f)
         {
-            Color inkO = Ink; inkO.a *= overAlpha;           // 淡磨砂底上的墨色标题
-            Color w = Color.white; w.a *= overAlpha;         // 绿色按钮上的白字
-            DrawLabel(CRect(960, 540 - 90, 1400, 220), overTextStr, FontOver, inkO, TextAnchor.MiddleCenter);
-            DrawLabel(CRect(960, 540 + 140, 460, 116), "再来一局", FontPrimary, w, TextAnchor.MiddleCenter);
+            float cardA = overCardCG != null ? overCardCG.alpha : 1f;
+            float titleT = Mathf.Clamp01((overT - 0.10f) / 0.45f);
+            titleT = 1f - Mathf.Pow(1f - titleT, 3f);    // easeOutCubic：与卡片弹簧同起点，观感连贯
+            Color w = Color.white; w.a *= overAlpha * (againCG != null ? againCG.alpha : 0f);
+
+            // 标题：胜者名用阵营色（与 HUD 阵营点同色系），随卡片 Q 弹上滑入场
+            Color winCol = overWinner == 0 ? ChipBlue : ChipRed;
+            winCol.a *= overAlpha * titleT * cardA;
+            float titleY = 296 + (1f - titleT) * 46f;
+            DrawLabel(CRect(960, titleY, 1400, 110),
+                GameManager.I.names[overWinner] + " 获胜！", FontOver, winCol, TextAnchor.MiddleCenter);
+
+            // 比分跳数（0.40s 起随跳数进度淡入）：胜者数字用胜者色，大字 FontBanner
+            float scoreA = Mathf.Clamp01((overT - 0.40f) / 0.30f) * cardA;
+            Color c0 = ChipBlue; c0.a *= overAlpha * scoreA;
+            Color c1 = ChipRed; c1.a *= overAlpha * scoreA;
+            Color colon = Ink; colon.a *= overAlpha * scoreA * 0.6f;
+            DrawLabel(CRect(800, 470, 240, 96), shownS0.ToString(), FontBanner,
+                overWinner == 0 ? c0 : new Color(c1.r, c1.g, c1.b, c1.a * 0.85f), TextAnchor.MiddleCenter);
+            DrawLabel(CRect(960, 470, 100, 96), ":", FontBanner, colon, TextAnchor.MiddleCenter);
+            DrawLabel(CRect(1120, 470, 240, 96), shownS1.ToString(), FontBanner,
+                overWinner == 1 ? c1 : new Color(c0.r, c0.g, c0.b, c0.a * 0.85f), TextAnchor.MiddleCenter);
+            // 双方名字（阵营色小字；败者略淡——上面给非胜者数字乘的 0.85 同一逻辑）
+            DrawLabel(CRect(800, 538, 300, 40), GameManager.I.names[0], FontSub, c0, TextAnchor.MiddleCenter);
+            DrawLabel(CRect(1120, 538, 300, 40), GameManager.I.names[1], FontSub, c1, TextAnchor.MiddleCenter);
+
+            // 最高单杆（0.80s 起淡入，次级灰）
+            float mbA = Mathf.Clamp01((overT - 0.80f) / 0.35f) * cardA;
+            Color mbCol = Ink2; mbCol.a *= overAlpha * mbA;
+            DrawLabel(CRect(960, 596, 800, 40), "最高单杆  " + overMB0 + " : " + overMB1,
+                FontSub, mbCol, TextAnchor.MiddleCenter);
+
+            DrawLabel(CRect(960, 720, 460, 116), "再来一局", FontPrimary, w, TextAnchor.MiddleCenter);
         }
 
         // ---- 设置面板（文字随面板滑入位移 + 淡入）----

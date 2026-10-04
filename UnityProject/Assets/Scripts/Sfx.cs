@@ -5,6 +5,7 @@
 //   Cue   杆头击白球"嗒"      —— GameManager.Shoot 出杆瞬间
 //   Ball  球碰球"咔"          —— BallController.OnCollisionEnter（撞到球）
 //   Cush  球碰库边/袋衬"噗"    —— BallController.OnCollisionEnter（撞到非球）
+// 另有胜利结算号角 sfx_win_1（v0.51，单条旋律，Sfx.Win()）—— 不做速度映射，仅受开关控制。
 //
 // "不同力度、速度要有区别"的实现（真实台球声学特征）：
 //   · 响度随撞击速度非线性增长（幂 <1：中低速已明显可辨，高速不炸）；
@@ -31,6 +32,7 @@ public class Sfx : MonoBehaviour
     private AudioSource[] pool;                 // 轮转音源池（同一帧多响互不打断）
     private int nextVoice;
     private AudioClip[][] variants;             // [3 类][各 ≤3 个变体]
+    private AudioClip winClip;                  // v0.51：胜利结算号角（单条合成小旋律）
 
     // ---- 每类音效的速度→响度/音调映射参数（下标 = Kind）----
     // VRef：达到满响度的速度（开球球堆内互撞可到 7m/s，故 Ball 取 7）；
@@ -66,6 +68,7 @@ public class Sfx : MonoBehaviour
         variants[(int)Kind.Cue] = LoadSet("sfx_cue");
         variants[(int)Kind.Ball] = LoadSet("sfx_ball");
         variants[(int)Kind.Cush] = LoadSet("sfx_cush");
+        winClip = Resources.Load<AudioClip>("Audio/sfx_win_1");   // v0.51：胜利号角（缺失只降级，不报错）
         pool = new AudioSource[10];
         for (int i = 0; i < pool.Length; i++)
         {
@@ -75,7 +78,8 @@ public class Sfx : MonoBehaviour
             pool[i] = src;
         }
         Debug.Log("[SFX] init clips cue=" + Count(variants[0]) +
-                  " ball=" + Count(variants[1]) + " cush=" + Count(variants[2]));
+                  " ball=" + Count(variants[1]) + " cush=" + Count(variants[2]) +
+                  " win=" + (winClip != null ? 1 : 0));
     }
 
     private AudioClip[] LoadSet(string baseName)
@@ -99,6 +103,20 @@ public class Sfx : MonoBehaviour
 
     /// 球-库边/颚部/袋衬碰撞（speed = 接触法线方向相对速度 m/s）。BallController 调用。
     public static void Cush(float speed) { Play(Kind.Cush, speed); }
+
+    /// <summary>
+    /// v0.51：胜利结算号角（UIManager.ShowGameOver(true) 时播一次）。
+    /// 单条完整旋律（三音上行 + 高八度泛音，tools\make_audio.py 合成），
+    /// 不走速度映射；同样受 GameSettings.SfxOn 开关与"测试环境 I==null 静默"约束。
+    /// </summary>
+    public static void Win()
+    {
+        if (I == null || !GameSettings.SfxOn || I.winClip == null) return;
+        var src = I.pool[I.nextVoice];
+        I.nextVoice = (I.nextVoice + 1) % I.pool.Length;
+        src.pitch = 1f;                          // 旋律固定音高，不做速度/抖动偏移
+        src.PlayOneShot(I.winClip, 0.85f);
+    }
 
     private static void Play(Kind k, float speed)
     {

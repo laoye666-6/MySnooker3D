@@ -181,6 +181,29 @@ public class ShotDriver : MonoBehaviour
             yield return Shot("11_pocket_middle");
         }
 
+        // ---- ⑩ v0.51：胜利结算动画（三帧：卡片 Q 弹中 / 比分跳数+彩纸 / 落定）----
+        // 走真实终局路径：公开字段写比分 → 反射调私有 GameOver()（与规则引擎终局同入口），
+        // maxBreak 也用反射补上，让结算卡的"最高单杆"行有内容可截。
+        var gc2 = Camera.main != null ? Camera.main.GetComponent<GameCamera>() : null;
+        if (gc2 != null) gc2.enabled = true;               // 恢复被 ⑨ 停掉的运镜
+        gm.StartGame();
+        yield return Wait(0.8f);
+        gm.scores[0] = 87; gm.scores[1] = 45;
+        var mbF = typeof(GameManager).GetField("maxBreak");
+        if (mbF != null)
+        {
+            var arr = (int[])mbF.GetValue(gm);
+            if (arr != null) { arr[0] = 62; arr[1] = 38; }
+        }
+        var goM = typeof(GameManager).GetMethod("GameOver", BindingFlags.NonPublic | BindingFlags.Instance);
+        if (goM != null) goM.Invoke(gm, null);
+        yield return Wait(0.32f);                          // 卡片弹簧过冲附近
+        yield return Shot("12_win_card_pop");
+        yield return Wait(0.50f);                          // ~0.82s：跳数进行中、彩纸正落
+        yield return Shot("13_win_confetti");
+        yield return Wait(1.60f);                          // ~2.42s：彩纸将尽、比分到位、按钮已可点
+        yield return Shot("14_win_settled");
+
         Debug.Log("[SHOT] DONE");
         done = true;
         yield return Wait(0.3f);

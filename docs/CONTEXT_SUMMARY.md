@@ -1,4 +1,4 @@
-# 双人斯诺克 3D —— 项目上下文总结（截至 v0.50，2026-10-02）
+# 双人斯诺克 3D —— 项目上下文总结（截至 v0.52，2026-10-03）
 
 > 本文件为完整压缩上下文，供导入 AI 助手继续开发使用。
 > 项目根目录：`E:\Snooker`（工作区）；Unity 工程：`E:\Snooker3D`
@@ -14,7 +14,8 @@
 脚本化建模（标准比赛尺寸 3569×1778mm），物理用 Unity PhysX + 自定义滚动摩擦 + 自建白球自旋模型，
 规则为**完整官方斯诺克规则**（WPBSA 2024-25，仅剩 2 项细则未实现），带可开关辅助瞄准线、
 贝塞尔入场运镜、设置界面、单杆分 HUD、147 满分提示、加塞杆法、真实袋口物理、
-**碰撞音效（v0.46）**、**iOS 液态玻璃 UI（v0.44~v0.47）**、**台球厅环境场景（v0.49~v0.50）**。
+**碰撞音效（v0.46）**、**iOS 液态玻璃 UI（v0.44~v0.47）**、**台球厅环境场景（v0.49~v0.50）**、
+**胜利结算动画（v0.51：卡片 Q 弹/比分跳数/彩纸/胜利号角）**。
 
 **已开源**：https://github.com/laoye666-6/MySnooker3D （public / MIT，Release 已到 v0.50，含 APK）
 **交付物**：`E:\Snooker3D\Builds\Snooker3D.apk`（v0.50，双架构 ARM64+X86_64，IL2CPP，约 75MB）
@@ -29,19 +30,19 @@
 | git / gh | `D:\Program Files\Git\cmd\git.exe`；`C:\Program Files\GitHub CLI\gh.exe`（已登录 laoye666-6） |
 | MuMu adb | `127.0.0.1:16384`（1600×900 横屏，Android 15） |
 | Unity 工程 | `E:\Snooker3D`（`Assets\Scripts` / `Assets\Editor` 由 sync.bat 同步） |
-| **源码母本（权威）** | `E:\Snooker\unity_src\Scripts`（16 个 cs）+ `unity_src\Editor`（4 个）；另有 `shaders\LiquidGlass.shader`、`shaders\GlassBlur.shader` 与 `android\AndroidManifest.xml` 母本（sync.bat 只同步 *.cs，需手工拷入工程） |
-| Blender 脚本 | `E:\Snooker\blender\`：make_table / bake_cloth / make_icon / open_table_edit / render_pockets / shrink_pockets（废弃）+ **pool_hall.blend / pool_hall_README.md（台球厅场景）** |
-| 资产产物 | `E:\Snooker\assets\`（table.obj、cue.obj、cloth/wood 贴图、icon.png、preview_*.png、`audio\sfx_*.wav` 音效 9 个、`hall\`（台球厅 fbx/glb + CC0 资源 + tex_/model_ 子目录）） |
+| **源码母本（权威）** | `E:\Snooker\unity_src\Scripts`（17 个 cs）+ `unity_src\Editor`（4 个）；另有 `shaders\LiquidGlass.shader`、`shaders\GlassBlur.shader` 与 `android\AndroidManifest.xml` 母本（sync.bat 只同步 *.cs，需手工拷入工程） |
+| Blender 脚本 | `E:\Snooker\blender\`：make_table / bake_cloth / make_icon / open_table_edit / render_pockets / shrink_pockets（废弃）+ **pool_hall.blend / pool_hall_README.md（台球厅场景）+ hall_lift_export.py / hall_export_fbx.py / hall_verify_fbx.py（v0.52 抬灯与 FBX 导出/校验）** |
+| 资产产物 | `E:\Snooker\assets\`（table.obj、cue.obj、cloth/wood 贴图、icon.png、preview_*.png、`audio\sfx_*.wav` 音效 10 个（含 sfx_win_1 胜利号角）、`hall\`（台球厅 fbx/glb + CC0 资源 + tex_/model_ 子目录）） |
 | 开源仓库 | `E:\Snooker\MySnooker3D`（origin 已配，master；`docs\DEVELOPMENT.md` = 详细开发文档） |
 | 辅助脚本 | `E:\Snooker\tools\`：sync.bat / m.bat / regress.sh / make_audio.py（音效合成）/ fetch_hall_assets.py（台球厅 CC0 资源下载）+ 4 个编辑器 GUI 自动化 ps1 |
 | 截图/日志 | `E:\Snooker\shots\`（编辑器截图 `shots\editor\`、台球厅 `hall_*.png`）、`E:\Snooker\logs\` |
-| 文档 | `E:\Snooker\README.md`（踩坑 44 条 + 版本史）、本文件、`DSH_IMPORT_PROMPT.txt` |
+| 文档 | `E:\Snooker\README.md`（踩坑 46 条 + 版本史）、本文件、`DSH_IMPORT_PROMPT.txt` |
 
 包名 `com.snookerlab.snooker3d`；Activity `com.unity3d.player.UnityPlayerActivity`
 
 ## 三、代码架构（全部含详细中文注释）
 
-**运行时 `Scripts\`（16 个）：**
+**运行时 `Scripts\`（17 个）：**
 - `G.cs` — 全局常量：球桌尺寸(米)、袋口几何（v0.41）、滚动摩擦 0.11、出杆初速 0.55~6.0、
   停判阈值 0.09、置球点、分值/颜色/中文名、ColorOrder、加塞物理参数、
   工具函数 `ClampToD()/InD()/InPocket()/PastCornerPocketCenter()`
@@ -49,7 +50,7 @@
   输入 `TableState`(出杆前状态) + `ShotFacts`(本杆事实) → 输出 `ShotOutcome`(结算+新状态)。
   文件头按 WPBSA **2024-25 版**条款逐条列出依据（3(g)/3(h)/10/11/12/4/7）
 - `Bootstrapper.cs` — 纯代码搭整个场景：物理参数 → 灯光 → 相机 → **台球厅加载（v0.50：
-  Resources/Models/pool_hall.fbx 实例化 + 23 材质按名重建 + 室内光照 + 灯罩上移）** →
+  Resources/Models/pool_hall.fbx 实例化 + 23 材质按名重建 + 室内光照；v0.52 已删灯罩运行时上移，改由 Blender 模型自带高度）** →
   球桌模型与碰撞体（布料板挖真洞/库边/斜颚楔块/袋内衬）→ 22 颗球 → 球杆与瞄准线 → 中文 UI → Sfx.Init
 - `GameManager.cs` — 状态机(Menu/Aiming/Rolling/GameOver) + 把规则结果落地（加分/回点/
   换手/终局）+ 几何判定 `IsSnookered()`/`BallsOn()` + 单杆分 + 147 连击 + 球在手 `DragCueBall()`
@@ -63,16 +64,19 @@
 - `GameCamera.cs` — 贝塞尔弧线入场运镜 + smootherstep + 注视点平滑 + 菜单漂移 + 跟球/全景；
   **v0.50 入场弧线压到 2.45~2.55m（台球厅天花板 y=2.68，旧 4.7m 会穿顶）**
 - `UIManager.cs` — uGUI 图形 + IMGUI 文字层；HUD/菜单/设置面板（五行：帧率/分辨率/阴影/步长/音效）/
-  147 横幅/让对手重打提示/加塞圆盘/微调按钮；字号 FontXxx 常量阶梯
+  147 横幅/让对手重打提示/加塞圆盘/微调按钮；字号 FontXxx 常量阶梯；
+  **胜利结算动画时间线（v0.51：卡片 Q 弹/比分跳数/延迟按钮，ShowGameOver 传入 maxBreak）**
 - `UIGlass.cs` — 液态玻璃零贴图顶点网格（圆角/胶囊/圆形/描边环）；OnPopulateMesh 推
   `_RectHW/_CornerR` 给 shader SDF；`UseLiquid()` 全参入口 + `UseRefraction/UseBlur` 预设 +
   `UseShadow`/`AttachShadow()` 软投影（v0.47）
 - `UIJelly.cs` — 按钮 Q 弹（按下压扁/松手欠阻尼弹簧过冲回弹）
+- `UIConfetti.cs` — **胜利彩纸（v0.51）**：零贴图顶点网格（72 片一个 draw call），
+  Launch(burst)/ResetState；iOS 系统色，终端下落+正弦摆动+自旋，出屏消亡后零开销
 - `Haptics.cs` — 按钮触感（安卓 VibrationEffect，按下轻点/主按钮确认重点）
 - `Sfx.cs` — **碰撞/击球音效（v0.46）**：击球/球碰球/球碰库三类各 3 个合成变体
   （Resources/Audio 预导入，`tools\make_audio.py` 生成）；响度随法向撞击速度幂函数映射、
   音调随速度升高+微抖；同类最小间隔节流 + 实例 ID 防双响 + 10 路音源池；2D 播放；
-  受 GameSettings.SfxOn 开关控制
+  受 GameSettings.SfxOn 开关控制；**Win() 胜利号角（v0.51，sfx_win_1）**
 - `GlassSceneCamera.cs` — 副相机：隔帧绘半分辨率 RT（_GlassScene 清晰层）+ 四分之一分辨率
   两轮分离高斯（_GlassBlur 磨砂层，GlassBlur.shader，RT→RT Blit 确定性）
 - `GameSettings.cs` — 帧率(60/90/120/144)/分辨率(50/75/100%)/阴影/物理步长/音效开关(v0.46)，
@@ -120,7 +124,33 @@ adb shell screencap -p /sdcard/a.png && adb pull /sdcard/a.png E:/Snooker/shots/
 :: MuMu 被关（宿主睡眠/杀 adb 后）→ MuMuManager.exe control -v 0 launch 重启（约 55 秒）
 ```
 
-## 五、近五版改动（v0.46~v0.50）
+## 五、近五版改动（v0.48~v0.52）
+
+### v0.52 —— 抬高台球厅吊灯（相机不再被灯挡，2026-10-03）
+- **问题**：跟球机位高 1.18m，灯罩下沿（v0.50 Unity 补丁 +0.30 后）约 1.15m → 视线被灯罩侵入。
+- **处置（改 Blender 权威源，模型即最终位置）**：罩体 z 0.79~1.05 → **1.54~1.80**（下沿 1.60），
+  吊杆以天花端 2.68 为锚缩短（1.80~2.68），灯下方面光同步上移 0.88→1.63；
+  脚本 `blender\hall_lift_export.py`（抬灯+导出一体）。
+- **Unity 侧**：删 v0.50 的 `Shade_* +0.30` 运行时补丁；点光抬到 y=1.45、强度 1.4→2.8
+  （距离平方补偿），`remapped=99` 不变。
+- **踩坑 46（Blender FBX 导出）**：`use_selection` 只选根对象会漏件——`object_types={'MESH'}`
+  下导出器不遍历空物体父级，绿椅（PROP_GreenChair_* 父级）+ Poly Haven 叶片共 10 件被静默
+  跳过（99→89）。**改逐对象选中**（仅排除主桌子树）；导出后跑 `blender\hall_verify_fbx.py`
+  反查。另：改 `location` 后 `matrix_world` 需 `view_layer.update()` 才刷新。
+- ShotTest 验证：跟球/Rolling 机位均不再见灯罩遮挡。
+
+### v0.51 —— 胜利结算动画（2026-10-03）
+- 终局演出时间线（UIManager `overT`）：磨砂淡入 → 0.10s 胜者玻璃卡片 Q 弹入场
+  （弹簧 0.72→1 过冲 ~4%）→ 0.40s 比分跳数 1.1s（胜者阵营色）→ 0.45s 彩纸 1.6s →
+  0.55s "再来一局"延迟淡入（淡入完成才开射线）。
+- **UIConfetti.cs（新）**：零贴图顶点网格彩纸（一个 MaskableGraphic、72 片一个 draw call，
+  iOS 系统色，终端下落+摆动+自旋，静止期零重建）。
+- GameManager 新增 `maxBreak[2]`，结算卡加"最高单杆 X : Y"行。
+- Sfx.Win()：make_audio.py 合成 C 大调三音上行号角 `sfx_win_1.wav`（受 SfxOn 控制）。
+- **踩坑 45**：按钮软投影（AttachShadow）是按钮兄弟节点，按钮延迟淡入时投影先暴露成
+  灰斑 → 按钮+投影装进同一个容器（AgainGroup），CanvasGroup 挂容器。
+- 编辑器偶发播放模式时间线冻结（Bootstrap 后 ShotDriver 无心跳）→ 杀进程删 Temp 重试
+  （复验第 4 次过）；编辑器极低帧率下弹簧/彩纸 dt 钳制会放慢真实时间观感，真机无此问题。
 
 ### v0.50 —— 台球厅集成进游戏（2026-10-02）
 - 修复 v0.49"安装后场景没变"（台球厅只存在于 Blender，未接入 Unity）：
@@ -131,6 +161,7 @@ adb shell screencap -p /sdcard/a.png && adb pull /sdcard/a.png E:/Snooker/shots/
   实测 `remapped renderers=99`。灯罩整体上移 0.30（跟球机位不再被挡）。
 - 室内光照：主光 1.05→0.45 / 补光→0.15 / 环境压暗 + 每桌吊灯位（±7.2/0, y=0.80）暖色点光
   1.4/range6.5。垫底地板 -0.72→-0.9 防共面闪烁。
+  （v0.52 更新：点光改 y=1.45、强度 2.8；罩体抬高见下。）
 - MuMu 实测：厅完整入景（背景桌/扶手椅/盆栽/暖色地板），开球/音效/计分零回归。
 
 ### v0.49 —— 台球厅场景（Blender 资产轮，2026-10-02）
@@ -206,7 +237,7 @@ adb shell screencap -p /sdcard/a.png && adb pull /sdcard/a.png E:/Snooker/shots/
    软投影 `AttachShadow()` 只挂随面板 CanvasGroup 淡入淡出的元素。
 5. 设置弹窗背景渐模糊 = SettingsBlurBg 全屏磨砂层随 settingsCG 淡入。
 
-## 九、踩坑精选（完整 44 条见 README「踩坑记录」）
+## 九、踩坑精选（完整 46 条见 README「踩坑记录」）
 
 只列仍会影响新改动的：
 
@@ -244,13 +275,16 @@ adb shell screencap -p /sdcard/a.png && adb pull /sdcard/a.png E:/Snooker/shots/
 - v0.44~45 液态玻璃 UI + Miss 选择权门禁
 - v0.46 碰撞音效（速度映射）→ v0.47 玻璃重做（磨砂+拉丝）→ v0.48 顶条圆角/文字改黑
 - v0.49 台球厅场景（Blender 资产轮）→ v0.50 台球厅集成进游戏（FBX/材质重建/室内光）
+- v0.51 胜利结算动画（卡片 Q 弹/比分跳数/彩纸 UIConfetti/胜利号角 maxBreak 统计）
+- v0.52 抬高台球厅吊灯（罩 1.60 下沿，相机不再被挡；踩坑 46 FBX 逐对象选中）
 
 ## 十一、当前功能全清单（均已验收）
 
 菜单(入场运镜+液态玻璃磨砂底) → 设置(帧率/分辨率/阴影/物理步长/音效五行，持久化) →
 开始游戏 → 瞄准(拖动/微调±0.02°/辅助线开关/准线自动指定彩球) → 力度滑条 → 击球 →
 真实物理(滚动摩擦/库边反弹/真洞落袋/晃袋/加塞杆法) → 完整规则(58 断言) → 计分(HUD 单杆分) →
-147 提示 → 结算；液态玻璃 UI（磨砂+边缘拉丝+Q弹+触感+软投影）；碰撞音效（速度映射）；
+147 提示 → 结算（**胜利结算动画**：磨砂淡入→胜者卡片 Q 弹→比分跳数（含最高单杆统计）→
+彩纸→按钮延迟淡入+胜利号角）；液态玻璃 UI（磨砂+边缘拉丝+Q弹+触感+软投影）；碰撞音效（速度映射）；
 **台球厅环境**（三桌/吊灯/墙裙/球杆架/记分牌/挂钟/海报/座椅/盆栽，暖色室内光）
 
 ## 十二、遗留 / 可做

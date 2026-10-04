@@ -366,6 +366,15 @@ python E:\Snooker\tools\make_audio.py
     与构建期间残留的 java（Gradle daemon）让 Unity 的 SDK 探测子进程死等。
     **处置：杀光 `adb.exe`/`java.exe` + 删 `Temp/` 再构建**（仅删 UnityLockfile 不够）；
     恢复后 IL2CPP 全量约 40~60 分钟。
+45. **按钮软投影（AttachShadow）是按钮的兄弟节点**（v0.51）：给按钮挂 CanvasGroup 做延迟
+    淡入时，作为兄弟的投影不在组内 → 按钮出现前投影先暴露成一块灰斑。
+    **处置：按钮 + 投影装进同一个空容器，CanvasGroup 挂在容器上**（结算"再来一局" = AgainGroup）。
+46. **Blender FBX `use_selection` 只选根对象会漏件**（v0.52）：导出器在
+    `object_types={'MESH'}` 下**不遍历空物体父级**，挂在 `PROP_GreenChair_*` / `Plant_*`
+    空父级下的网格被静默跳过（blend 99 → fbx 89，绿椅 4 把 + Poly Haven 叶片 6 件全丢）。
+    **处置：逐对象选中**（仅排除主桌子树）；导出后用 `blender/hall_verify_fbx.py`
+    反查网格数（应 99）与道具计数。另注：改 `location` 后 `matrix_world` 需
+    `view_layer.update()` 才刷新，否则审计/导出仍读到旧矩阵。
 
 ## 已验证（MuMu 实测）
 
@@ -409,6 +418,44 @@ python E:\Snooker\tools\make_audio.py
 **尚未集成进 Unity 工程**（下一轮：Bootstrapper 加载 GLB + 游戏内灯光布点 + 移动端贴图降级）。
 
 ## 版本记录
+
+### v0.52（第 52 次迭代）—— 抬高台球厅吊灯（相机不再被灯挡）
+
+- **问题**：跟球机位高 1.18m，而吊灯灯罩下沿（v0.50 在 Unity 打补丁 +0.30 后）约 1.15m
+  —— 相机与灯罩几乎同高，视线被灯罩暗面侵入。
+- **处置（Blender 权威源，模型即最终位置）**：三盏吊灯罩体 z 0.79~1.05 → **1.54~1.80**
+  （下沿 1.60），吊杆以天花端 z=2.68 为锚按比例缩短（1.80~2.68，底端贴住新罩顶）；
+  灯罩下的面光同步上移（z 0.88→1.63）。脚本 `blender\hall_lift_export.py`。
+- **Unity 侧**：删除 v0.50 的 `Shade_* +0.30` 运行时偏移补丁（模型已自带正确高度）；
+  每桌暖色点光随灯位上抬到 y=1.45（罩口下方），强度按距离平方衰减补偿 1.4→2.8，
+  保住 v0.50 的桌面照度（`remapped renderers=99` 不变）。
+- **踩坑 46（新，Blender FBX 导出）**：`use_selection` 只选"根对象"不足——导出器在
+  `object_types={'MESH'}` 下**不遍历空物体父级**，挂在 `PROP_GreenChair_*` / `Plant_*`
+  空父级下的网格被静默跳过（blend 99 → fbx 89，绿椅 4 把 + 叶片 6 件全丢）。
+  改为**逐对象选中**（仅排除主桌子树）即恢复 99。导出后必用 `hall_verify_fbx.py`
+  反查网格数/道具计数。
+- 编辑器 ShotTest 验证：跟球机位 / Rolling 全景机位均不再见灯罩遮挡，室内光感与 v0.50 一致。
+
+### v0.51（第 51 次迭代）—— 胜利结算动画
+
+终局从"一行字淡入"升级为完整结算演出（编辑器 ShotTest 验证，`shots\editor\12~14_win_*.png`）：
+
+- **动画时间线**（UIManager，`overT` 起表）：背景磨砂淡入 → 0.10s **胜者玻璃卡片 Q 弹入场**
+  （欠阻尼弹簧 0.72→1，刚度 180/阻尼 19，过冲 ~4%，UIJelly 同款半隐式欧拉）+ 标题上滑 →
+  0.40s **比分跳数 1.1s**（easeOutCubic 数到终分，胜者数字用阵营色/败者降饱和）→
+  0.45s **彩纸起爆 1.6s** → 0.55s "再来一局"按钮延迟淡入（淡入完成才开射线）。
+- **新增统计**：GameManager 记 `maxBreak[2]`（双方本局最高单杆），结算卡新增"最高单杆 X : Y"行。
+- **UIConfetti.cs（新）**：零贴图顶点网格彩纸（踩坑 4 同路径）——一个 MaskableGraphic，
+  OnPopulateMesh 为每片生成旋转四边形，72 片上限一个 draw call；iOS 系统色 + 白，
+  终端速度下落 + 正弦摆动 + 自旋，出屏消亡后停止网格重建（静止期零开销）。
+- **Sfx.Win() 胜利号角**：`tools\make_audio.py` 合成 C 大调三音上行琶音（C5→E5→G5→C6 +
+  高八度泛音，0.85s），Resources 预导入 `sfx_win_1.wav`；受音效开关控制。
+- **踩坑 45（新）**：按钮的软投影（AttachShadow）是按钮的**兄弟节点**——只给按钮挂
+  CanvasGroup 延迟淡入时，投影会先暴露成灰斑。修法：按钮+投影放进同一个空容器，
+  CanvasGroup 挂容器上（"再来一局" = AgainGroup）。
+- 编辑器偶发"播放模式时间线冻结"（Bootstrap 后 ShotDriver 无心跳，聚焦/钉窗无效）——
+  杀进程删 Temp 重试即可（本版复验第 4 次通过）；另注：编辑器极低帧率时弹簧/彩纸的
+  dt 钳制（0.033s）会让动画在真实时间上放慢，真机 60fps 无此问题。
 
 ### v0.50（第 50 次迭代）—— 台球厅集成进游戏
 

@@ -47,6 +47,7 @@ public class GameManager : MonoBehaviour
     [HideInInspector] public int cur = 0;                               // 当前击球方下标：0=玩家1，1=玩家2
     [HideInInspector] public int[] scores = new int[2];                 // 两名玩家总分 scores[0]/scores[1]
     [HideInInspector] public int[] breakScore = new int[2];             // 单杆得分（本次连续得分，换手即清零）
+    [HideInInspector] public int[] maxBreak = new int[2];               // v0.51：双方本局最高单杆（胜利结算卡显示）
     public string[] names = { "玩家 1", "玩家 2" };                      // HUD 上显示的名字
 
     // ---------------------------------------------------------------------------------
@@ -122,6 +123,7 @@ public class GameManager : MonoBehaviour
     {
         scores[0] = scores[1] = 0;                       // 比分清零
         breakScore[0] = breakScore[1] = 0;               // 单杆分清零
+        maxBreak[0] = maxBreak[1] = 0;                   // v0.51：最高单杆清零
         pairStreak = 0; lastPotKind = null; max147Shown = false;
         cur = 0;                                         // 玩家 1 先手
         freeColorPending = false;
@@ -521,6 +523,8 @@ public class GameManager : MonoBehaviour
         else
         {
             breakScore[cur] += oc.legalPts;
+            if (breakScore[cur] > maxBreak[cur])         // v0.51：顺手记下本局最高单杆（结算卡用）
+                maxBreak[cur] = breakScore[cur];
             if (oc.pottedRed && !oc.pottedColor) lastPotKind = BallKind.Red;      // 打进红球 → 红杆
             else if (oc.pottedColor && oc.pottedColorKind == BallKind.Black && lastPotKind == BallKind.Red)
             { lastPotKind = BallKind.Black; pairStreak++; }                        // 红→黑，完成一套
@@ -877,8 +881,9 @@ public class GameManager : MonoBehaviour
     {
         state = State.GameOver;
         int w = scores[0] >= scores[1] ? 0 : 1;
-        ui.ShowGameOver(true, w, scores[0], scores[1]);
-        Debug.Log("[SNOOKER] GAMEOVER P" + (w + 1) + " wins " + scores[0] + ":" + scores[1]);
+        ui.ShowGameOver(true, w, scores[0], scores[1], maxBreak[0], maxBreak[1]);
+        Debug.Log("[SNOOKER] GAMEOVER P" + (w + 1) + " wins " + scores[0] + ":" + scores[1] +
+                  " maxBreak " + maxBreak[0] + ":" + maxBreak[1]);
         LogBalls("GAMEOVER");
     }
 

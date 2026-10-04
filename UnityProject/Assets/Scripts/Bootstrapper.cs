@@ -126,16 +126,14 @@ public class Bootstrapper : MonoBehaviour
                 if (changed) { r.sharedMaterials = sms; remapped++; }
             }
 
-            // 灯罩整体上移 0.30：跟球机位（高 1.18m 俯视）会扫到 y0.85 的灯罩暗面，
-            // 提到 1.15 贴近真实球房视线；吊杆穿进罩内、天花吸盘不动，视觉不受影响。
-            foreach (var t in hall.GetComponentsInChildren<Transform>())
-            {
-                if (t.name.StartsWith("Shade_Out") || t.name.StartsWith("Shade_In") || t.name.StartsWith("Shade_Panel"))
-                    t.localPosition += new Vector3(0f, 0.30f, 0f);
-            }
+            // v0.52：吊灯已在 Blender 源文件里抬高（罩下沿 0.85→1.54、吊杆随缩 1.80..2.68），
+            // 模型即最终位置——v0.50 在此做的"Shade_* +0.30 临时上移"已删除。
+            // 跟球机位高 1.18m 现在从灯下方 0.36m 通过，入场弧线 2.45~2.55m 从罩顶上方飞过。
 
             // 室内光照（v0.50）：阳光透不进天花板 → 主光/补光调弱、环境光压暗，
             // 改由每桌吊灯位置的一盏暖色点光承担照明（与 Blender 预览一致的光位）。
+            // v0.52：点光随灯位上抬到罩口下方（1.54-0.09），强度按距离平方衰减补偿
+            // ((1.45/0.80)²≈3.3 → 2.8，略保守，环境光托底)，保住 v0.50 的桌面照度。
             var sunT = GameObject.Find("SunLight");
             if (sunT != null) sunT.GetComponent<Light>().intensity = 0.45f;
             var fillT = GameObject.Find("FillLight");
@@ -144,11 +142,11 @@ public class Bootstrapper : MonoBehaviour
             foreach (float lx in new[] { -7.2f, 0f, 7.2f })
             {
                 var lp = new GameObject("HallLampLight");
-                lp.transform.position = new Vector3(lx, 0.80f, 0f);
+                lp.transform.position = new Vector3(lx, 1.45f, 0f);
                 var l = lp.AddComponent<Light>();
                 l.type = LightType.Point;
                 l.color = new Color(1f, 0.85f, 0.66f);   // 暖钨丝色
-                l.intensity = 1.4f;
+                l.intensity = 2.8f;
                 l.range = 6.5f;
             }
             Debug.Log("[SNOOKER] pool hall loaded (indoor lighting, remapped renderers=" + remapped + ")");
