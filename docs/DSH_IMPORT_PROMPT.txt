@@ -8,8 +8,8 @@
   iOS 液态玻璃 UI（重磨砂+边缘拉丝/Q 弹/触感）、碰撞音效（响度音调随速度）、
   **台球厅环境场景（三桌/吊灯/陈设，无人物）**
 ■ 技术栈：Unity 2022.3.62f3c1（IL2CPP，ARM64+X86_64）+ Blender 5.2.2 脚本化建模（MCP 驱动）+ MuMu 实测
-■ 当前版本：v0.54（第 54 次迭代）；APK：E:\Snooker3D\Builds\Snooker3D.apk
-■ 已开源：https://github.com/laoye666-6/MySnooker3D （public / MIT，Release v0.54 已带 APK，Latest）
+■ 当前版本：v0.55（第 55 次迭代）；APK：E:\Snooker3D\Builds\Snooker3D.apk
+■ 已开源：https://github.com/laoye666-6/MySnooker3D （public / MIT，Release v0.55 已带 APK，Latest）
 
 ■ 路径（全部实测有效）
 - 源码母本（权威）：E:\Snooker\unity_src\Scripts（16 个 cs）+ unity_src\Editor（4 个）
@@ -29,7 +29,7 @@
 - SnookerRules.cs = 纯函数规则引擎（TableState + ShotFacts → ShotOutcome，不碰物理/UI）
 - GameManager.cs = 规则落地 + 几何判定 IsSnookered()/BallsOn() + 球在手 + ChoicePending 门禁
 - Editor：RuleTest.cs（58 断言）/ PhysTest.cs（Run 开球/CushionTest/SpinTest/PocketTest 四入口）/
-  BuildGame.cs（版本号在此改，当前 0.54/54）/ ShotTest.cs（编辑器截图 16 帧）
+  BuildGame.cs（版本号在此改，当前 0.55/55）/ ShotTest.cs（编辑器截图 16 帧）
 - 其余：G.cs(常量) Bootstrapper(自建场景+球桌碰撞体+**台球厅加载/材质重建/室内光照 v0.50**)
   BallController(球+白球自旋+袋口防弹射+碰撞音效上报) CueController(瞄准/出杆/加塞/拖球/微调)
   AimLine(辅助线+指定彩球) SpinPad(加塞圆盘) GameCamera(运镜，入场弧线已压回厅内)
@@ -110,6 +110,8 @@ bash E:\Snooker\tools\regress.sh
   + 复选项（v0.53：Rule 14(b) 三选一含原始位置重打 + 双方同意复位）+ 玻璃去白边更透 + 袋口库边下摆
   + UI 动画收敛（v0.54：EaseTo 指数 ease-out 出比入快 / 卡片 0.92 起弹 / Jelly subtle / 弹窗 materialize）
   + v0.54b 修 UI 重叠（玻璃边缘 alpha 改乘法去轮廓幽灵；模态期间 HUD 让位；胶囊内边距）
+  + v0.55 袋口按实拍重建（皮革颚板 Leather/蜂窝网兜 Net+net_texture.png/JawR 0.048/0.026 大弧颚；
+    踩坑 49：OBJ 材质集变更须连 .mtl 同拷，仍 defaultMat 则删 .meta 强制重导）
 ■ 未实现（已就地标注）：Miss 累计三次判负、自由球裁判裁量（v0.53 已补齐 Miss"原始位置重摆"）
 ■ 已知遗留：台球厅偏暗（有意，可调 HallLampLight 强度/颜色）；MuMu 玻璃不渲染（真机正常）；
   APK ~78MB（备用字体 48MiB 可移出）；背景两桌无装饰球；无环境音

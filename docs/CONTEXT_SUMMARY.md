@@ -1,4 +1,4 @@
-# 双人斯诺克 3D —— 项目上下文总结（截至 v0.54，2026-10-04）
+# 双人斯诺克 3D —— 项目上下文总结（截至 v0.55，2026-10-06）
 
 > 本文件为完整压缩上下文，供导入 AI 助手继续开发使用。
 > 项目根目录：`E:\Snooker`（工作区）；Unity 工程：`E:\Snooker3D`
@@ -127,7 +127,7 @@ adb shell screencap -p /sdcard/a.png && adb pull /sdcard/a.png E:/Snooker/shots/
 :: MuMu 被关（宿主睡眠/杀 adb 后）→ MuMuManager.exe control -v 0 launch 重启（约 55 秒）
 ```
 
-## 五、近五版改动（v0.50~v0.54）
+## 五、近五版改动（v0.51~v0.55）
 
 ### v0.53 —— 复选项 + 玻璃更透 + 球在手通知 + 袋口库边（2026-10-04）
 - **① 球在手提示移到左上**：原居中胶囊（1100×52）横跨台面挡视线 → 左侧紧凑胶囊（660×52，
@@ -155,6 +155,17 @@ adb shell screencap -p /sdcard/a.png && adb pull /sdcard/a.png E:/Snooker/shots/
 - **③ 文字切边**：球在手胶囊文字与胶囊同宽（660）首字被圆角切；中央提示 1400 同样顶边。
   文字宽改 612 / 1330（左右留 24~35px 内边距）。
 - 排查法：同坐标裁剪对比"有/无面板"两帧判穿透；台面做灰白像素阈值扫描找残影。
+
+### v0.55 —— 袋口按实拍重建（皮革颚板/蜂窝网兜/大弧颚，2026-10-06）
+- 依 3 张袋口实拍重建：**皮革颚板**（Leather 材质，角袋 C 形环扇板 274°/中袋 180° 衬板，
+  顶 0.049 高于木框）、**蜂窝网兜**（Net 材质 + net_texture.png 程序化六边形白绳网，
+  喇叭形收口 ≤ 井筒内径）、配色校准（木框深灰黑/台呢鲜黄绿）。
+- **G.cs**：JawRCorner 0.022→0.048、JawRCenter 0.016→0.026（照片弧度；与 Blender 同源，
+  AddJaw 碰撞颚面自动跟随；相切→开口不变）。袋口 PASS=6 保持。
+- **踩坑 49**：OBJ 材质集变更后 Unity 显示 defaultMat——须连 table.mtl 一起拷；仍不行删
+  table.obj.meta 强制重导。Bootstrapper 材质表 +Leather/Net。
+- Blender MCP 定形（look/render 对照照片），参数落回 make_table.py。MCP 会话禁跑
+  read_factory_settings（会杀服务器）；中文 UI 节点名本地化 → 材质脚本用 inputs 索引。
 
 ### v0.54 —— UI 动画按 Apple/Emil 动效原则收敛（2026-10-04）
 - 全部线性 `MoveTowards` 淡入淡出 → 帧率无关指数 ease-out `UIManager.EaseTo(cur,target,dt,respIn,respOut)`：
@@ -320,6 +331,7 @@ adb shell screencap -p /sdcard/a.png && adb pull /sdcard/a.png E:/Snooker/shots/
 - v0.53 复选项 + 玻璃去白边更透 + 球在手移左上 + 袋口库边下摆（规则 65 断言；踩坑 47/48）
 - v0.54 UI 动画收敛（EaseTo 指数 ease-out/出比入快；卡片 0.92 起弹；Jelly subtle；弹窗 materialize）
 - v0.54b 紧急修 UI 重叠（shader 边缘 alpha 乘法化去轮廓幽灵；模态期间 HUD 让位；胶囊内边距）
+- v0.55 袋口按实拍重建（皮革颚板+蜂窝网兜+大弧颚 JawR 0.048/0.026；踩坑 49 mtl 同拷）
 
 ## 十一、当前功能全清单（均已验收）
 

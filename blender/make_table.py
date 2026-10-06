@@ -1,7 +1,7 @@
 # Blender 4.x/5.x headless script: build a standard snooker table + cue, export OBJ for Unity.
 # Run: blender -b -P make_table.py
 import bpy, bmesh, math, os
-from math import radians, sin, cos, pi
+from math import radians, sin, cos, pi, degrees, atan2
 from mathutils import Matrix, Vector
 
 OUT = r"E:\Snooker\assets"
@@ -20,8 +20,8 @@ JAW_DX = 0.050                 # jaw slant depth along rail (at full cushion dep
 # v0.41：袋口颚部圆弧半径 —— 库边端头与鼻线的连接由"尖角"改为"圆弧"。
 # 圆心取在端头沿进深方向偏 r 处，圆弧与鼻线在端头点相切：开口宽度不变，
 # 但端头在进深方向平滑内收（真实球桌的颚部是圆角，球擦颚会被导走而不是撞直棱）。
-JAW_R_CORNER = 0.022           # 角袋端头圆弧半径
-JAW_R_CENTER = 0.016           # 中袋端头圆弧半径
+JAW_R_CORNER = 0.048           # 角袋端头圆弧半径（v0.55 按实拍：≈50mm 大弧）
+JAW_R_CENTER = 0.026           # 中袋端头圆弧半径（v0.55 按实拍：≈26mm）
 HOLE_CORNER = 0.055            # cloth hole radius, corner pockets
 HOLE_CENTER = 0.062            # cloth hole radius, center pockets
 CORNER_OFF = 0.008             # pocket center offset outside cloth corner
@@ -61,11 +61,14 @@ def make_mat(name, rgb, rough=0.6):
     m.diffuse_color = (*rgb, 1.0)
     return m
 
-M_CLOTH = make_mat("Cloth", (0.075, 0.42, 0.18), 0.95)
-M_CUSH = make_mat("Cushion", (0.065, 0.38, 0.165), 0.9)
-M_WOOD = make_mat("Wood", (0.30, 0.13, 0.055), 0.35)
+# v0.55：配色按袋口实拍照片校准（深灰黑木框 / 鲜黄绿台呢 / 米黄皮革颚板 / 白网兜）
+M_CLOTH = make_mat("Cloth", (0.150, 0.520, 0.145), 0.95)
+M_CUSH = make_mat("Cushion", (0.130, 0.480, 0.135), 0.92)
+M_WOOD = make_mat("Wood", (0.085, 0.085, 0.095), 0.42)
 M_DARK = make_mat("Pocket", (0.012, 0.012, 0.012), 0.9)
 M_WHITE = make_mat("Mark", (0.92, 0.92, 0.88), 0.8)
+M_LEATHER = make_mat("Leather", (0.620, 0.470, 0.260), 0.45)   # 袋口皮革颚板（实拍：米黄包边）
+M_NET = make_mat("Net", (0.93, 0.93, 0.91), 0.85)              # 蜂窝网兜（贴图在 Unity 侧重建）
 M_SHAFT = make_mat("CueShaft", (0.78, 0.56, 0.33), 0.3)
 M_BUTT = make_mat("CueButt", (0.09, 0.05, 0.03), 0.3)
 M_FERR = make_mat("Ferrule", (0.95, 0.95, 0.90), 0.3)
@@ -214,6 +217,67 @@ for i, (px, py, hr) in enumerate(POCKETS):
     boolean_diff(w, [cutter])                   # 挖成杯状（同时删掉 cutter）
     table_objs.append(w)
     well_objs.append(w)
+
+# ---------------- v0.55 袋口部件（按实拍照片重建） ----------------
+# 照片特征（2026.10.06 实拍 ×3）：① 库边断口处一块【米黄皮革】包边——角袋为 C 形弧板
+# （内缘贴洞口、外缘压上木框顶），中袋为洞外侧弧形衬板；② 洞口内【白色蜂窝网兜】
+# （喇叭形，向下收口）；③ 木框深灰近黑、台呢鲜黄绿。颚板顶面 0.049 高于木框顶 0.048，
+# 俯视呈"绿呢→皮革→洞口"三层，与照片一致。碰撞侧影：颚板在球路径（鼻线 0.034）外侧，
+# 球擦颚面滑入袋口时贴着的是 AddJaw 的斜颚面（G.JawR_* 与 Blender 同源）。
+def ring_sector(name, cx, cy, r_in, r_out, a0, a1, z0, z1, material, seg=48):
+    """环扇段棱柱（俯视 C 形），Z-up；角度 a0→a1 度（逆时针），内弧顶点必须反向连面。"""
+    n = seg + 1
+    verts, faces = [], []
+    for i in range(n):
+        a = radians(a0+(a1-a0)*i/seg); verts.append((cx+cos(a)*r_out, cy+sin(a)*r_out, z0))
+    for i in range(n):
+        a = radians(a0+(a1-a0)*i/seg); verts.append((cx+cos(a)*r_in,  cy+sin(a)*r_in,  z0))
+    for i in range(n):
+        a = radians(a0+(a1-a0)*i/seg); verts.append((cx+cos(a)*r_out, cy+sin(a)*r_out, z1))
+    for i in range(n):
+        a = radians(a0+(a1-a0)*i/seg); verts.append((cx+cos(a)*r_in,  cy+sin(a)*r_in,  z1))
+    for i in range(seg):
+        o0,i0,o1,i1 = i, n+i, i+1, n+i+1
+        t0,t1 = 2*n+i, 2*n+i+1
+        b0,b1 = 3*n+i, 3*n+i+1
+        faces += [(o0,o1,t1,t0), (i1,i0,b0,b1), (o0,t0,b0,i0), (o1,i1,b1,t1)]
+    top = list(range(2*n, 3*n)) + list(range(4*n-1, 3*n-1, -1))   # 外顶正向 + 内顶反向
+    bot = list(range(0, n))     + list(range(2*n-1, n-1, -1))     # 外底正向 + 内底反向
+    faces.append(tuple(top)); faces.append(tuple(bot))
+    return mesh_obj(name, verts, faces, material)
+
+def net_funnel(name, cx, cy, hr, material, seg=24):
+    """蜂窝网兜喇叭：顶圈贴洞口 → 微收 → 底收口；全程 ≤ 井筒内径(hr-2mm)。"""
+    r_top, r_mid, r_bot = hr-0.007, hr-0.014, 0.016
+    rings = [(r_top, -0.006), ((r_top+r_mid)/2, -0.032), (r_mid, -0.062),
+             ((r_mid+r_bot)/2, -0.086), (r_bot, -0.108)]
+    verts, faces = [], []
+    for (r, z) in rings:
+        for i in range(seg):
+            a = 2*pi*i/seg
+            verts.append((cx+cos(a)*r, cy+sin(a)*r, z))
+    for k in range(len(rings)-1):
+        for i in range(seg):
+            j = (i+1) % seg
+            faces.append((k*seg+i, k*seg+j, (k+1)*seg+j, (k+1)*seg+i))
+    cidx = len(verts); verts.append((cx, cy, rings[-1][1]))
+    for i in range(seg):
+        j = (i+1) % seg
+        faces.append((cidx, (len(rings)-1)*seg+j, (len(rings)-1)*seg+i))
+    return mesh_obj(name, verts, faces, material)
+
+for i, (px, py, hr) in enumerate(POCKETS[:4]):
+    inward = degrees(atan2(-py, -px))                     # 袋心→桌心方向角
+    ob = ring_sector("JawPlate_Corner_%d" % i, px, py, hr+0.011, hr+0.045,
+                     inward+45, inward-45+360, -0.055, 0.049, M_LEATHER, 56)
+    table_objs.append(ob)
+for i, (px, py, hr) in enumerate(POCKETS[4:]):
+    inward = degrees(atan2(-py, -px))
+    ob = ring_sector("JawPlate_Center_%d" % i, px, py, hr+0.012, hr+0.045,
+                     inward+90, inward-90+360, -0.055, 0.049, M_LEATHER, 48)
+    table_objs.append(ob)
+for i, (px, py, hr) in enumerate(POCKETS):
+    table_objs.append(net_funnel("Net_%d" % i, px, py, hr, M_NET))
 
 # ---------------- legs ----------------
 lx = [-(L / 2 - 0.25), 0.9, L / 2 - 0.25]

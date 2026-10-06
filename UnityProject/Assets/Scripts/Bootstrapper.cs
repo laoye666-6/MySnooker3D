@@ -179,14 +179,19 @@ public class Bootstrapper : MonoBehaviour
                     string im = imported[k] != null ? imported[k].name : "none";
                     names.Append(im).Append(k < imported.Length - 1 ? "," : ")");
                     // 优先按导入材质名匹配（稳定）；匹配不上再按物体名前缀兜底
+                    // v0.55：新增 Leather（袋口皮革颚板）与 Net（蜂窝网兜，net_texture.png 预导入）
                     Material m =
                         im == "Cloth" ? mats.cloth :         // 台呢 → 绿
                         im == "Cushion" ? mats.cushion :     // 库边 → 深绿
                         im == "Wood" ? mats.wood :           // 桌框/腿 → 木色
                         im == "Pocket" ? mats.dark :         // 袋口 → 黑
                         im == "Mark" ? mats.mark :           // 标线/点 → 白
+                        im == "Leather" ? mats.leather :     // v0.55 皮革颚板 → 米黄
+                        im == "Net" ? mats.net :             // v0.55 网兜 → 蜂窝贴图
                         (r.gameObject.name.StartsWith("Cloth") ? mats.cloth :
                          r.gameObject.name.StartsWith("Cushion") ? mats.cushion :
+                         r.gameObject.name.StartsWith("JawPlate") ? mats.leather :
+                         r.gameObject.name.StartsWith("Net") ? mats.net :
                          (r.gameObject.name.StartsWith("Frame") || r.gameObject.name.StartsWith("Leg")) ? mats.wood :
                          r.gameObject.name.StartsWith("Pocket") ? mats.dark : mats.mark);
                     imported[k] = m;
@@ -357,23 +362,25 @@ public class Bootstrapper : MonoBehaviour
     /// 场景用到的所有 Standard 材质的集合（集中创建，避免重复 new）。
     private struct MatSet
     {
-        public Material cloth, cushion, wood, dark, mark, shaft, butt;
+        public Material cloth, cushion, wood, dark, mark, shaft, butt, leather, net;
     }
 
     private MatSet Materials()
     {
         // 台呢布纹贴图（Blender 烘焙，1024²=1m×1m 无缝平铺，Resources/Textures 下）。
         // 有贴图时颜色改白色由贴图提供绿色；没有时退回纯色，保证旧资源也能跑。
+        // v0.55：tint 按袋口实拍校准——呢面调亮偏黄绿（照片是鲜草绿）。
         var clothTex = Resources.Load<Texture2D>("Textures/cloth_texture");
-        var cloth = NewMat("Cloth", clothTex != null ? Color.white : G.ClothCol, 0.95f, 0f);
+        var cloth = NewMat("Cloth", clothTex != null ? new Color(0.55f, 0.95f, 0.42f) : G.ClothCol, 0.95f, 0f);
         if (clothTex != null) cloth.mainTexture = clothTex;      // UV 按米平铺（cube project 1.0）
         // 库边用同一张贴图乘一个略深的冷色调，与台呢区分
-        var cushion = NewMat("Cushion", clothTex != null ? new Color(0.82f, 0.92f, 0.86f) : G.CushionCol, 0.9f, 0f);
+        var cushion = NewMat("Cushion", clothTex != null ? new Color(0.50f, 0.90f, 0.42f) : G.CushionCol, 0.9f, 0f);
         if (clothTex != null) cushion.mainTexture = clothTex;
 
         var woodTex = Resources.Load<Texture2D>("Textures/wood_texture");
         // 桌框/桌腿木纹贴图（v0.31，Blender 程序化木纹烘焙，UV 按米平铺）；无贴图退回纯色
-        var wood = NewMat("Wood", woodTex != null ? new Color(1.35f, 1.2f, 1.1f) : G.WoodCol, 0.45f, 0f);
+        // v0.55：tint 调成深灰黑（照片木框近黑，旧值 1.35/1.2/1.1 偏红棕）
+        var wood = NewMat("Wood", woodTex != null ? new Color(0.42f, 0.42f, 0.46f) : G.WoodCol, 0.45f, 0f);
         if (woodTex != null) wood.mainTexture = woodTex;
 
         return new MatSet
@@ -384,8 +391,21 @@ public class Bootstrapper : MonoBehaviour
             dark = NewMat("PocketDark", new Color(0.02f, 0.02f, 0.02f), 0.8f, 0f),
             mark = NewMat("Mark", new Color(0.92f, 0.92f, 0.88f), 0.8f, 0f),
             shaft = NewMat("CueShaft", new Color(0.80f, 0.58f, 0.35f), 0.3f, 0.1f),
-            butt = NewMat("CueButt", new Color(0.10f, 0.06f, 0.04f), 0.3f, 0.1f)
+            butt = NewMat("CueButt", new Color(0.10f, 0.06f, 0.04f), 0.3f, 0.1f),
+            // v0.55：袋口皮革颚板（实拍米黄，略带磨损感 → roughness 0.5）
+            leather = NewMat("JawLeather", new Color(0.86f, 0.70f, 0.44f), 0.5f, 0f),
+            // v0.55：蜂窝网兜（net_texture.png 预导入，白绳黑网眼；缺失退白纯色）
+            net = MakeNetMaterial()
         };
+    }
+
+    /// v0.55：网兜材质——蜂窝贴图预导入（踩坑 4：预导入才可靠，不做运行时生成）。
+    private Material MakeNetMaterial()
+    {
+        var tex = Resources.Load<Texture2D>("Textures/net_texture");
+        var m = NewMat("PocketNet", tex != null ? Color.white : new Color(0.90f, 0.90f, 0.88f), 0.85f, 0f);
+        if (tex != null) m.mainTexture = tex;
+        return m;
     }
 
     /// 建一个 Standard 材质。rough：粗糙度(0~1，越大越哑光)；metal：金属度(0~1)。

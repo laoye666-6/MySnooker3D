@@ -83,14 +83,16 @@ public static class G
     /// 中袋洞口半径（= Blender HOLE_CENTER 0.062）。
     public const float HoleCenterR = 0.062f;
 
-    /// 颚尖圆角半径：库边端头与鼻线/颚面的连接圆弧（角袋 22mm / 中袋 16mm）。
-    /// **必须与 Blender 的 JAW_R_CORNER / JAW_R_CENTER 一致**（视觉模型用它做布尔圆弧）。
+    /// 颚尖圆角半径：库边端头与鼻线/颚面的连接圆弧。
+    /// **必须与 Blender 的 JAW_R_CORNER / JAW_R_CENTER 一致**（视觉模型用它做布尔圆弧，
+    /// Bootstrapper.AddJaw 用它做碰撞颚面，两者同源自动同步）。
     /// 现实依据见下方注释：WPBSA 规则书明确把库边端头描述为"被切成曲线"，但**不给半径数值**
-    /// （规则用的是各厂商自定的专用量规，且会随时间变更）。故本值是按"让弧面在俯视下
-    /// 清晰可见、又不明显改变开口宽度"选取的——圆弧与鼻线相切，所以**开口宽度与旧版完全相同**。
-    /// 来源：WPBSA Rulebook 2024-25 §2 Rule 4 "Cushion Faces"。
-    public const float JawRCorner = 0.022f;
-    public const float JawRCenter = 0.016f;
+    /// （规则用的是各厂商自定的专用量规，且会随时间变更）。
+    /// v0.55：按 2026.10 袋口实拍照片重新取值——照片里中袋鼻头圆弧半径 ≈25~30mm、
+    /// 角袋颚弧 ≈50mm（大弧平滑导向袋口），旧值 22/16mm 明显偏小。圆弧与鼻线相切，
+    /// 所以**开口宽度不变**；弧半径受 AddJaw 的 CushD*0.9 上限约束（0.0495），0.048 刚好在内。
+    public const float JawRCorner = 0.048f;
+    public const float JawRCenter = 0.026f;
 
 
     /// 落袋判定深度（米）：球心低于此值即判定已落袋。

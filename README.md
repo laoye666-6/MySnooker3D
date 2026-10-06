@@ -429,6 +429,30 @@ python E:\Snooker\tools\make_audio.py
 
 ## 版本记录
 
+### v0.55（第 55 次迭代）—— 袋口按实拍重建（皮革颚板 / 蜂窝网兜 / 大弧颚）
+
+依据 2026.10.06 三张袋口实拍照片（角袋 ×2、中袋 ×1）重建袋口：
+
+- **建模（Blender MCP 定形 → make_table.py 落盘）**：
+  - **皮革颚板**（新材质 Leather，米黄 0.62/0.47/0.26）：角袋 = C 形环扇板（内缘贴洞口
+    hr+11mm、外缘压木框顶，覆盖外侧 ~274°）；中袋 = 洞外弧形衬板（180°）；顶面 0.049
+    高于木框 1mm，俯视呈"绿呢→皮革→洞口"三层，与照片一致。
+  - **蜂窝网兜**（新材质 Net）：喇叭面从洞口向下收口（全程 ≤ 井筒内径），贴图
+    `net_texture.png`（tools\make_net_texture.py 程序化六边形白绳网，预导入 Resources）。
+  - **配色按照片校准**：木框深灰黑 (0.085³)、台呢鲜黄绿 (0.15/0.52/0.145)。
+  - **颚弧加大**：JAW_R_CORNER 0.022→**0.048**、JAW_R_CENTER 0.016→**0.026**（照片里
+    鼻头/颚弧半径明显更大；圆弧与鼻线相切 → 开口宽度不变）。
+- **G.cs 碰撞**：JawRCorner/JawRCenter 同步加大——Bootstrapper.AddJaw 与 Blender 同源常量，
+  颚面自动跟随；"颚弧与鼻线相切"硬约束保持。
+- **踩坑 49（新）**：OBJ 换了材质集（+Leather/Net）后 Unity 显示 defaultMat——**必须连
+  table.mtl 一起拷**（只拷 obj 时旧 mtl 解析不出新槽）；仍不行则删 table.obj.meta 强制重导
+  （materialLocation=1 的 remap 缓存）。Bootstrapper 材质重建表加 Leather/Net 两行。
+- **Blender MCP**：本轮用 MCP 会话定形（look/render 对照照片），参数落回 make_table.py。
+  新坑：MCP 会话里**禁跑 read_factory_settings**（重置插件状态、杀掉服务器）；中文 UI 下
+  Principled 节点名本地化（踩坑 15 的节点版），材质脚本改用 inputs[0]/[2] 索引。
+- 回归：5 道全绿（规则 65/65、库边 3×bounced、ALL SPIN OK、**袋口 PASS=6**——新颚弧下
+  晃袋/进洞行为保持）。ShotTest 16 帧复核（皮革颚板/网兜/配色入游戏确认）。
+
 ### v0.54b（v0.54 的紧急修复）—— 修 UI 重叠：轮廓幽灵 / 模态压 HUD / 文字切边
 
 用户报"部分 UI 重叠"，逐帧排查出**三个独立 bug**（都属同一条 v0.53→v0.54 尾账）：

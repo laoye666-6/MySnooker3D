@@ -189,7 +189,8 @@ for ob in bpy.context.scene.objects:
         continue
     # 台呢/库边用布纹 UV；桌框/桌腿用木纹 UV；袋口顺手加（黑面无纹理也无妨）
     if ob.name.startswith("Cloth") or ob.name.startswith("Cushion") or \
-       ob.name.startswith("Frame") or ob.name.startswith("Leg") or ob.name.startswith("Pocket"):
+       ob.name.startswith("Frame") or ob.name.startswith("Leg") or ob.name.startswith("Pocket") or \
+       ob.name.startswith("JawPlate") or ob.name.startswith("Net"):
         add_uv(ob)
 
 bpy.ops.object.select_all(action='DESELECT')
