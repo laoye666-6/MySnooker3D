@@ -1,5 +1,5 @@
 // =====================================================================================
-// GameSettings.cs —— 游戏设置：帧率 / 渲染分辨率 / 阴影画质 / 物理步长 / 音效开关（v0.46）
+// GameSettings.cs —— 游戏设置：帧率 / 渲染分辨率 / 阴影画质 / 物理步长 / 音效开关（v1.0）
 //
 // 数据流：Bootstrapper 启动时 CaptureNative() 记录设备原生分辨率 → Load() 读 PlayerPrefs
 //        → Apply() 应用；UIManager 的设置面板修改后调用 Save()+Apply() 立即生效并持久化。
@@ -25,7 +25,7 @@ public static class GameSettings
     public static int ResIndex = 2;        // 当前分辨率档下标，默认 100%
     public static bool Shadows = true;     // 阴影开关，默认开
     public static int StepIndex = 2;       // 当前物理步长档下标，默认 2ms（v0.36 起的值）
-    public static bool SfxOn = true;       // v0.46：碰撞/击球音效开关，默认开（Sfx 播放前检查）
+    public static bool SfxOn = true;       // v1.0：只剩胜利结算号角；碰撞/击球音效已删除（Sfx 播放前检查）
 
     public static int NativeW = 1920;      // 设备原生宽（CaptureNative 后有效）
     public static int NativeH = 1080;      // 设备原生高

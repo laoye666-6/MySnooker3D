@@ -69,25 +69,31 @@ public class UIGlass : MaskableGraphic
         return g;
     }
 
-    /// 大面板玻璃（菜单/设置/结算/对话框）：v0.53 起边缘白（rim/sheen/edgeAlpha）比 v0.47 明显
-    /// 收敛 → 去白边；但仍保留中度奶白（frost 0.20）——台球厅很暗，面板必须够"亮"才读得清墨字。
-    public void UseBlur(float blur = 14f, float frost = 0.14f, float lift = 0.10f, float crisp = 0.35f)
+    /// 大面板玻璃（菜单/设置/结算/对话框）：v0.56 暗色玻璃板语言——
+    /// 台球厅是暗环境（PCOL 同款"暗厅亮桌"），面板填充改深色调，配合全白字体；
+    /// **去饱和 0.45**：磨砂源里的绿呢/木色不再透到板上（浅色时代"绿闪"的根治），
+    /// frost/lift 相应调低（这两个参数是把板往白色推，暗色板只能少量用）。
+    public void UseBlur(float blur = 14f, float frost = 0.08f, float lift = 0.06f, float crisp = 0.25f)
     {
-        UseLiquid(0.20f, 0.25f, 5f, 0.7f, 36f, 60f, 40f, 3f,
-                  0.12f, 0.10f, 0.16f, 0.10f, 0.12f, 0.30f, 0.08f, 0.06f, 0.08f);
+        // v0.56：此前 frost/lift/crisp 形参被忽略（内部写死）——暗色板必须用低 frost，
+        // 这里改为真正把参数传下去；glow（三盏游动光源）清零，暗厅里它们读作"异常闪烁"。
+        UseLiquid(frost, crisp, 5f, 0.7f, 36f, 60f, 40f, 3f,
+                  0.12f, 0.10f, 0.16f, 0.10f, 0.10f, 0.30f, 0f, lift, 0.45f);
     }
 
-    /// 清澈水玻璃（按钮/胶囊/圆点）：v0.53 起去白边、接近清玻璃——
-    /// 旧版 _Frost 写死 0.36（控件"发白"主因）现降到 0.08，_Crisp 大幅提高，
-    /// sheen/rim/spec/edgeAlpha 逐项下调；保留穹顶折射与边缘透镜的"玻璃感"。
+    /// 清澈水玻璃（按钮/胶囊/圆点）：v0.56 暗色 HUD 控件——
+    /// 保留穹顶折射与边缘透镜的"玻璃感"；**去饱和 0.60** 是本轮关键：
+    /// 控件半透明悬浮在绿台面上方，相机一转模糊源里的高饱和绿呢忽进忽出，
+    /// 就是用户报的"加塞盘左下绿色闪烁"——把采样背景去饱和成中性灰后只剩明暗结构，
+    /// 闪烁消失；glow 清零（同上，游灯光晕在暗厅读作闪烁）。
     public void UseRefraction(float blur = 1.5f, float refr = 22f, float bulge = 1.4f,
                               float spec = 1.0f, float edgeAlpha = 0.6f, float crisp = 0.55f,
                               float glow = 0.55f)
     {
         // v0.54：edgeAlpha 系数 0.65→0.85 —— shader 边缘 alpha 由"加法"改为"乘法"后
         // （修淡出残影，见 LiquidGlass.frag），边缘抬升相对变弱，这里补一点回来。
-        UseLiquid(0.08f, crisp * 0.85f, refr * 0.55f, bulge, 34f, 30f, 26f, 2f,
-                  0.10f, 0.10f, 0.12f, 0.12f, spec * 0.18f, edgeAlpha * 0.85f, 0.10f, 0.03f, 0.06f);
+        UseLiquid(0.06f, crisp * 0.85f, refr * 0.55f, bulge, 34f, 30f, 26f, 2f,
+                  0.10f, 0.10f, 0.12f, 0.12f, spec * 0.18f, edgeAlpha * 0.85f, 0f, 0.05f, 0.60f);
     }
 
     /// <summary>

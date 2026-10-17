@@ -80,7 +80,9 @@ plane = bpy.context.active_object
 mat = bpy.data.materials.new("ClothBake")
 mat.use_nodes = True
 nt = mat.node_tree
-result = build_cloth_color_nodes(nt)
+# v0.57：织纹幅度 1.0 -> 0.25 —— 暗纹贴图里的经纬织纹在灯下读成"方块纹路"
+#（用户反馈），真实台呢平铺色几乎是均匀绒面，织纹交给法线贴图表达。
+result = build_cloth_color_nodes(nt, 0.25)
 out = nt.nodes.new('ShaderNodeOutputMaterial'); out.location = (400, 0)
 emit = nt.nodes.new('ShaderNodeEmission');      emit.location = (200, 0)
 nt.links.new(result, emit.inputs['Color'])

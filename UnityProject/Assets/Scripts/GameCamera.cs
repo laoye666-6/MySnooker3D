@@ -10,14 +10,27 @@
 //
 // 机位：
 //   Menu/GameOver   演示机位（落定后缓慢漂移）
-//   Aiming          跟球机位：白球后方 0.82m、高 1.18m，随瞄准实时旋转
-//   Rolling         全景机位：高 2.5m，X 向跟随白球
+//   Aiming          俯身击球机位（v0.56）：眼睛贴到台面上方——白球后方 0.42m、
+//                   台呢上方仅 0.11m（真实俯身击球时眼睛比球心只高几厘米），
+//                   注视白球前方 0.55m 的瞄准线，随瞄准实时旋转。
+//                   参考 PCOL（heyzxz.me/pcol）的俯身参数：站立眼高 1.7m →
+//                   俯身眼高 1.0m（其台呢 0.88m → 眼比台呢高 0.12m）、身体绕白球
+//                   0.38m 圆站位再前倾——换算到本工程（台呢 y=0）即 0.11m 高。
+//   Rolling         全景机位：高 2.5m，X 向跟随白球（= "站立环视"，与俯身位拉开反差）
 // =====================================================================================
 using UnityEngine;
 
 public class GameCamera : MonoBehaviour
 {
     private Vector3 lookAt;           // 当前注视点（始终做时间平滑，避免视线突跳）
+
+    /// <summary>
+    /// v0.57：瞄准态的"起立观察"开关（HUD 按钮"起立/俯身"切换）。
+    /// false = 俯身击球机位（默认）；true = 站起身俯瞰球台。
+    /// 模拟真实打球时站起来看球型的动作；出杆结算回到瞄准态后保持当前姿态，
+    /// 由玩家自己决定何时俯身（与 PCOL 的 stand/aim 切换行为一致）。
+    /// </summary>
+    public bool standView;
 
     // ---- 入场动画参数 ----
     // v0.50：起点/控制点高度压到 2.45~2.55m —— 台球厅有天花板（y=2.68），旧值 4.7m
@@ -28,8 +41,8 @@ public class GameCamera : MonoBehaviour
     private static readonly Vector3 IntroC1 = new Vector3(3.1f, 2.6f, 0.1f);      // 贝塞尔控制点1：绕 +X 端
     private static readonly Vector3 IntroC2 = new Vector3(2.3f, 2.45f, -2.6f);    // 贝塞尔控制点2：转入 -Z 库边
     private static readonly Vector3 IntroLookFrom = new Vector3(0.7f, 0f, 0f);
-    private static readonly Vector3 DemoPos = new Vector3(-0.9f, 2.3f, -2.2f);    // 菜单演示机位
-    private static readonly Vector3 DemoLook = new Vector3(0.2f, 0f, 0.1f);
+    private static readonly Vector3 DemoPos = new Vector3(-2.75f, 1.62f, -2.7f);   // 菜单演示机位（v0.57：球台外对角近机位，灯+台+厅同框，PCOL 菜单同构图）
+    private static readonly Vector3 DemoLook = new Vector3(0.35f, -0.12f, 0.3f);
 
     void Start()
     {
@@ -84,11 +97,29 @@ public class GameCamera : MonoBehaviour
         }
         else if (gm.state == GameManager.State.Aiming)
         {
-            // ---- 跟球机位：白球后方 0.82m、高 1.18m，看向白球前方 0.95m ----
             Vector3 dir = gm.cueCtl.Dir;               // 当前瞄准方向（拖动时相机跟着转）
             Vector3 c = gm.cue.transform.position;
-            desired = c - dir * 0.82f + Vector3.up * 1.18f;
-            look = c + dir * 0.95f;
+            if (standView)
+            {
+                // ---- 起立观察机位（v0.57，HUD 按钮"起立/俯身"切换）----
+                // 站起身沿瞄准方向后退半步、眼高提到真实站立眼高（PCOL eyeStandHeight
+                // 1.7m - 台呢 0.88 ≈ 0.82，此处取 0.85），视线压向台面中部——
+                // 一眼看到整张球台的球型分布（模拟真实打球时站起来看球）。
+                desired = c - dir * 1.55f + Vector3.up * 0.85f;
+                look = c + dir * 1.15f;
+                look.y = 0.02f;
+            }
+            else
+            {
+                // ---- 俯身击球机位（v0.56）：眼睛降到真实俯身高度 ----
+                // 横向：白球后方 0.42m（= PCOL 身体绕球 0.38m 圆 + 俯身前倾的合成距离）；
+                // 高度：台呢上方 0.11m（球心 0.026 → 眼比球心高约 8cm，即"下巴快贴到杆"的视角）。
+                // 注视点：瞄准线上白球前方 0.55m、高度略高于球心——画面里白球压在下三分之一，
+                // 前方球路与袋口在视线正前方，与真实俯身看到的构图一致。
+                desired = c - dir * 0.42f + Vector3.up * 0.11f;
+                look = c + dir * 0.55f;
+                look.y = 0.045f;
+            }
         }
         else
         {
@@ -98,9 +129,14 @@ public class GameCamera : MonoBehaviour
             look = new Vector3(c.x * 0.6f, 0f, 0f);
         }
 
-        // 指数衰减插值：帧率无关的平滑跟随（开始游戏时菜单机位→跟球机位的大幅
-        // 移动也会被此插值自然演变成一段"俯冲到位"的转场）
-        float kk = 1f - Mathf.Exp(-5f * Time.deltaTime);
+        // 指数衰减插值：帧率无关的平滑跟随（开始游戏时菜单机位→俯身机位的大幅
+        // 移动也会被此插值自然演变成一段"俯身到位"的转场）。
+        // v0.56：机位降低后跟瞄响应感更明显——瞄准态且已贴近目标位时把时间常数
+        // 收紧（τ≈0.08s），拖动转向几乎即时（真实俯身时头是跟着杆走的）；
+        // 大距离转场（开始游戏/滚动→俯身）仍用慢常数保持"俯身下去"的过程感。
+        float near = (gm.state == GameManager.State.Aiming &&
+                      (transform.position - desired).sqrMagnitude < 0.25f) ? 0.08f : 0.2f;
+        float kk = 1f - Mathf.Exp(-Time.deltaTime / near);
         transform.position = Vector3.Lerp(transform.position, desired, kk);
         lookAt = Vector3.Lerp(lookAt, look, kk);
         transform.LookAt(lookAt);

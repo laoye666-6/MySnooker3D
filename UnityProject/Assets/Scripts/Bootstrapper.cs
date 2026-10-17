@@ -25,6 +25,12 @@ public class Bootstrapper : MonoBehaviour
         // -----------------------------------------------------------------
         // 一、全局运行参数
         // -----------------------------------------------------------------
+        // v0.56：提前打开 runInBackground。此前它只在 ShotDriver.Start（编辑器截图
+        // 驱动）里设置——ShotTest 的已知顽疾是"进入播放模式后协程全灭"（踩坑 41），
+        // 根因之一正是启动竞态：编辑器窗口失焦时播放循环被整体暂停，而负责设置
+        // runInBackground 的 Start 还没来得及跑 → 死锁在"entering play mode"。
+        // Bootstrapper.Awake 是场景里第一个确定执行的入口，在这里打开最稳。
+        Application.runInBackground = true;
         Application.targetFrameRate = 60;          // 占位，Init 尾部按 GameSettings 应用实际档位
         // v0.36：物理步长 4ms → 2ms（500Hz）。加塞的滑动摩擦模型对步长敏感
         // （打滑阶段每步都要修正线速度与角速度，步长大则自旋修正粗糙）。
@@ -88,10 +94,21 @@ public class Bootstrapper : MonoBehaviour
                     var t = Resources.Load<Texture2D>(texPath);
                     if (t != null) m.mainTexture = t;
                 }
+                // v0.56：灯罩内衬/灯板/筒灯 = 自发光（灯是场景里唯一的"光源体"）。
+                // 不开自发光它们只是被照亮的白面——反射探针里拍到的是暗灯，
+                // 光面球的高光里没有灯，观感差一截（PCOL 的灯在 HDR 探针里是过曝亮块）。
+                if (matName == "MAT_ShadeInner" || matName == "MAT_LampPanel" || matName == "MAT_Downlight")
+                {
+                    m.EnableKeyword("_EMISSION");
+                    m.SetColor("_EmissionColor", new Color(1f, 0.94f, 0.82f) * 3.4f);
+                    m.globalIlluminationFlags = MaterialGlobalIlluminationFlags.RealtimeEmissive;
+                }
                 hallMats[matName] = m;
             }
-            HallMat("MAT_FloorWood", "Textures/hall/floor_diff", new Color(0.82f, 0.70f, 0.58f), 0.85f);
-            HallMat("MAT_WallGreen", "Textures/hall/wall_diff", new Color(0.32f, 0.55f, 0.36f), 0.9f);
+            // v0.56：厅内陈设整体调暗一档（写实球房的墙/地板在灯外都是沉暗的，
+            // 只有灯池内亮）——绿色墙 → 深墨绿，木地板 → 深胡桃。亮度靠灯光池表现。
+            HallMat("MAT_FloorWood", "Textures/hall/floor_diff", new Color(0.40f, 0.33f, 0.25f), 0.85f);
+            HallMat("MAT_WallGreen", "Textures/hall/wall_diff", new Color(0.28f, 0.32f, 0.22f), 0.9f);
             HallMat("MAT_Wainscot", null, new Color(0.07f, 0.04f, 0.025f), 0.45f);
             HallMat("MAT_CeilingDark", null, new Color(0.045f, 0.05f, 0.055f), 0.9f);
             HallMat("MAT_ShadeGreen", null, new Color(0.030f, 0.085f, 0.048f), 0.35f);
@@ -130,26 +147,112 @@ public class Bootstrapper : MonoBehaviour
             // 模型即最终位置——v0.50 在此做的"Shade_* +0.30 临时上移"已删除。
             // 跟球机位高 1.18m 现在从灯下方 0.36m 通过，入场弧线 2.45~2.55m 从罩顶上方飞过。
 
-            // 室内光照（v0.50）：阳光透不进天花板 → 主光/补光调弱、环境光压暗，
-            // 改由每桌吊灯位置的一盏暖色点光承担照明（与 Blender 预览一致的光位）。
-            // v0.52：点光随灯位上抬到罩口下方（1.54-0.09），强度按距离平方衰减补偿
-            // ((1.45/0.80)²≈3.3 → 2.8，略保守，环境光托底)，保住 v0.50 的桌面照度。
+            // 室内光照（v0.56 写实化，第二轮调参）：暗厅 + 双灯照亮主桌——
+            // ① 主吊灯聚光灯（软阴影开）：暖白、灯位在吊灯罩下沿(1.60)之下，
+            //    负责球在呢面上的真实投影与灯下高光。
+            // ② 均匀补光聚光灯（阴影关）：从罩顶上方打向全台——v0.56 第一轮实测
+            //    单盏窄锥聚光会把台面中心打到爆白、四角库边全黑（手电筒效应）；
+            //    PCOL 的做法正是"近乎全向的桌上方强光"(intensity 60/angle 175°)+
+            //    烘焙光照图，本灯承担它的"均匀铺亮"角色，让整张桌面都在光里。
+            // ③ 两侧背景桌吊灯点光 1.1 —— 比主桌暗一档半，形成球房纵深。
             var sunT = GameObject.Find("SunLight");
-            if (sunT != null) sunT.GetComponent<Light>().intensity = 0.45f;
+            if (sunT != null) sunT.GetComponent<Light>().intensity = 0.10f;
             var fillT = GameObject.Find("FillLight");
-            if (fillT != null) fillT.GetComponent<Light>().intensity = 0.15f;
-            RenderSettings.ambientLight = new Color(0.24f, 0.26f, 0.30f);
-            foreach (float lx in new[] { -7.2f, 0f, 7.2f })
+            if (fillT != null) fillT.GetComponent<Light>().intensity = 0f;
+            var mainSpotGo = new GameObject("MainTableSpot");
+            mainSpotGo.transform.position = new Vector3(0f, 1.50f, 0f);
+            mainSpotGo.transform.rotation = Quaternion.Euler(90f, 0f, 0f);   // 垂直向下
+            var spot = mainSpotGo.AddComponent<Light>();
+            spot.type = LightType.Spot;
+            spot.color = new Color(1f, 0.93f, 0.80f);   // 暖钨丝色
+            spot.intensity = 2.1f;
+            spot.range = 6.5f;
+            spot.spotAngle = 100f;
+            spot.shadows = LightShadows.Soft;
+
+            var fillSpotGo = new GameObject("MainTableFillSpot");
+            fillSpotGo.transform.position = new Vector3(0f, 2.45f, 0f);
+            fillSpotGo.transform.rotation = Quaternion.Euler(90f, 0f, 0f);
+            var fillSpot = fillSpotGo.AddComponent<Light>();
+            fillSpot.type = LightType.Spot;
+            fillSpot.color = new Color(1f, 0.96f, 0.88f);
+            fillSpot.intensity = 1.5f;
+            fillSpot.range = 7.6f;
+            fillSpot.spotAngle = 125f;
+            fillSpot.shadows = LightShadows.None;        // 无影补光：穿过灯罩均匀铺亮全台
+
+            foreach (float lx in new[] { -7.2f, 7.2f })
             {
                 var lp = new GameObject("HallLampLight");
                 lp.transform.position = new Vector3(lx, 1.45f, 0f);
                 var l = lp.AddComponent<Light>();
                 l.type = LightType.Point;
                 l.color = new Color(1f, 0.85f, 0.66f);   // 暖钨丝色
-                l.intensity = 2.8f;
+                l.intensity = 1.1f;
                 l.range = 6.5f;
             }
-            Debug.Log("[SNOOKER] pool hall loaded (indoor lighting, remapped renderers=" + remapped + ")");
+            // ── v0.57：主桌吊灯按 PCOL 美术重建（程序化，零 Blender 依赖）──
+            // 旧罩（模型自带 Shade_Out_0/In_0/Panel_0 + LampGlow_0*）从侧面是"黑盒子"，
+            // PCOL 的灯是：宽扁梯形黑罩 + 罩底整面过曝发光板 + 细吊杆。隐藏旧件重建。
+            BuildPcolLamp(0f);
+
+            // v0.56：灯底发光面片——罩内自发光面板（MAT_LampPanel）从浅角度永远被罩沿
+            // 挡住（罩口 1.60、面板 1.63，侧面看板在罩腔里）。在罩口正下方贴一片
+            // 自发光面（朝下），任何仰角都读作"亮着的灯"；反射探针里它就是球面高光的
+            // 来源（PCOL 的灯在 HDR 探针里是过曝亮块，同一表达）。
+            var glowMat = new Material(Shader.Find("Standard"));
+            glowMat.name = "LampGlow";
+            glowMat.color = new Color(0.01f, 0.01f, 0.01f);   // 漫反射近黑：侧面只剩自发光
+            glowMat.EnableKeyword("_EMISSION");
+            glowMat.SetColor("_EmissionColor", new Color(1f, 0.97f, 0.88f) * 3.4f);
+            glowMat.globalIlluminationFlags = MaterialGlobalIlluminationFlags.RealtimeEmissive;
+            // 每盏灯的发光面 = 底面（朝下）+ 一圈向外倾 45° 的"灯裙"：
+            // 单片朝下的面在浅掠射角接近侧棱、不可见（实测菜单机位仰角仅 ~5°）；
+            // 灯裙从任何方位都能看到一段亮面 —— 与真实灯箱的斜扩散罩一致。
+            Vector3[] skirtN = { new Vector3(0f, -1f, 1f), new Vector3(0f, -1f, -1f),
+                                 new Vector3(1f, -1f, 0f), new Vector3(-1f, -1f, 0f) };
+            foreach (float lx in new[] { -7.2f, 0f, 7.2f })
+            {
+                var q = GameObject.CreatePrimitive(PrimitiveType.Quad);
+                DestroyImmediate(q.GetComponent<Collider>());          // 纯视觉
+                q.name = "LampGlowBottom_" + lx.ToString("0");
+                q.GetComponent<Renderer>().sharedMaterial = glowMat;
+                q.transform.position = new Vector3(lx, 1.585f, 0f);
+                q.transform.rotation = Quaternion.Euler(90f, 0f, 0f);  // 面朝下
+                q.transform.localScale = new Vector3(1.9f, 0.85f, 1f);
+                for (int k = 0; k < 4; k++)
+                {
+                    Vector3 n = skirtN[k].normalized;
+                    var sk = GameObject.CreatePrimitive(PrimitiveType.Quad);
+                    DestroyImmediate(sk.GetComponent<Collider>());
+                    sk.name = "LampGlowSkirt_" + lx.ToString("0") + "_" + k;
+                    sk.GetComponent<Renderer>().sharedMaterial = glowMat;
+                    bool longSide = n.z != 0f;
+                    sk.transform.position = new Vector3(lx + n.x * (longSide ? 0f : 0.93f),
+                                                        1.50f, n.z * (longSide ? 0.42f : 0f));
+                    sk.transform.rotation = Quaternion.LookRotation(n, Vector3.up);
+                    sk.transform.localScale = longSide
+                        ? new Vector3(1.9f, 0.24f, 1f)
+                        : new Vector3(0.85f, 0.24f, 1f);
+                }
+            }
+
+            // 壁灯暖光池：PCOL 的房间墙上有两处暖色壁灯光斑，墙才有"可住的房间"感，
+            // 否则暗环境光下墙面读作纯黑。灯位贴近南北墙（z=±9），只洗墙不照台面。
+            // 四壁各一盏：侧墙 (z=±7.4) 与端墙 (x=±6.5)，暖色低强度只洗墙
+            foreach (var wpos in new[] {
+                new Vector3(0f, 1.7f, -7.4f), new Vector3(0f, 1.7f, 7.4f),
+                new Vector3(-6.5f, 1.7f, 0f), new Vector3(6.5f, 1.7f, 0f) })
+            {
+                var wp = new GameObject("WallWashLight");
+                wp.transform.position = wpos;
+                var wl = wp.AddComponent<Light>();
+                wl.type = LightType.Point;
+                wl.color = new Color(1f, 0.80f, 0.58f);
+                wl.intensity = 1.5f;
+                wl.range = 11f;
+            }
+            Debug.Log("[SNOOKER] pool hall loaded (dark club lighting, remapped renderers=" + remapped + ")");
         }
         else Debug.LogWarning("[SNOOKER] pool_hall.fbx not found in Resources/Models (fallback: empty hall)");
 
@@ -219,6 +322,15 @@ public class Bootstrapper : MonoBehaviour
         BuildTablePhysics();
 
         // -----------------------------------------------------------------
+        // 四b、球台反射探针（v0.56 写实化）：Standard 材质的球会自动采样最近的
+        // 反射探针——探针里烘进"吊灯光斑 + 绿呢环境 + 暗厅"，高光酚醛球就有了
+        // 真实的环境反射（PCOL 用 HDR 光探针网格表达同一件事）。
+        // 【必须在 22 颗球创建之前 RenderProbe】——否则球会拍到自己的像
+        // （每颗球的高光里出现一圈球，穿帮）。球杆晚于探针创建同理。
+        // -----------------------------------------------------------------
+        BuildReflectionProbe();
+
+        // -----------------------------------------------------------------
         // 五、GameManager 与 22 颗球（白×1 + 红×15 + 彩×6）
         // -----------------------------------------------------------------
         var gmGo = new GameObject("GameManager");
@@ -247,6 +359,28 @@ public class Bootstrapper : MonoBehaviour
             bounceCombine = PhysicMaterialCombine.Average
         };
 
+        // v0.56：贴地假阴影（PCOL 同款：每球一张 2.6×球径的径向渐变黑斑，
+        // 贴在呢面上方 1.2mm）。主吊灯聚光灯已有真影子，但真影方向偏离灯正下方、
+        // 且半影随距离拉长；这层"接触阴影"补上球底与呢面交界处的密实暗斑，
+        // 两者叠加才是真实观感。贴图预导入（踩坑 4：运行时建贴图真机不可靠）。
+        var shadowTex = Resources.Load<Texture2D>("Textures/ball_shadow");
+        Material shadowMat = null;
+        if (shadowTex != null)
+        {
+            shadowMat = new Material(Shader.Find("Standard"));
+            shadowMat.name = "BallShadow";
+            shadowMat.color = new Color(0f, 0f, 0f, 0.85f);
+            shadowMat.mainTexture = shadowTex;
+            shadowMat.SetFloat("_Mode", 3f);                    // Alpha Blend（与 GhostMat 同路径，真机已验证）
+            shadowMat.SetInt("_SrcBlend", (int)BlendMode.SrcAlpha);
+            shadowMat.SetInt("_DstBlend", (int)BlendMode.OneMinusSrcAlpha);
+            shadowMat.SetInt("_ZWrite", 0);
+            shadowMat.DisableKeyword("_ALPHATEST_ON");
+            shadowMat.EnableKeyword("_ALPHABLEND_ON");
+            shadowMat.DisableKeyword("_ALPHAPREMULTIPLY_ON");
+            shadowMat.renderQueue = 2990;                       // 台面(2000)之上、玻璃/UI 之下
+        }
+
         for (int i = 0; i < 22; i++)
         {
             // i=0 白球；i=1..15 红球；i=16..21 映射到 Yellow(2)~Black(7)
@@ -254,9 +388,10 @@ public class Bootstrapper : MonoBehaviour
             var go = GameObject.CreatePrimitive(PrimitiveType.Sphere);
             go.name = "Ball_" + kind + "_" + i;
             go.transform.localScale = Vector3.one * G.BallR * 2f;    // 单位球缩放成 52.5mm
-            go.GetComponent<Renderer>().sharedMaterial = NewMat("Ball_" + kind, G.BallColor(kind), 0.65f, 0f);
-            // v0.29 球体材质（哑光版）：粗糙度 0.65 + 金属度 0 —— 哑光酚醛树脂观感，
-            // 无刺眼高光、漫反射为主；旧参数(0.25, 0.55)金属感过重，中间版(0.12,0)高光过锐。
+            // v0.56：roughness 0.65 → 0.12（光面酚醛树脂）。真实比赛球是亮面高光，
+            // 灯下有一粒清晰的白点高光 + 台呢/灯的环境反射（反射探针已就位）；
+            // 旧哑光参数在暗厅布光下会显得像一颗灰珠。
+            go.GetComponent<Renderer>().sharedMaterial = NewMat("Ball_" + kind, G.BallColor(kind), 0.20f, 0f);
             var col = go.GetComponent<SphereCollider>();
             col.material = kind == BallKind.Cue ? cuePM : ballPM;      // v0.36：白球用零摩擦材质
             var rb = go.AddComponent<Rigidbody>();
@@ -270,6 +405,23 @@ public class Bootstrapper : MonoBehaviour
             var bc = go.AddComponent<BallController>();
             bc.Init();                                                // 编辑模式下手动缓存刚体
             bc.kind = kind;
+            // v0.56：贴地假阴影——独立四边形（不做球的子物体：球会滚转、缩放会跟着变），
+            // 每帧由 BallController 同步到球正下方的呢面上。
+            if (shadowMat != null)
+            {
+                var sh = GameObject.CreatePrimitive(PrimitiveType.Quad);
+                sh.name = "BallShadow_" + i;
+                // 必须用 DestroyImmediate：Destroy 是"帧末生效"，而编辑器离线测试
+                // （PhysTest 手动步进 Physics.Simulate）没有帧循环 → 四边形的
+                // MeshCollider 会一直残留到测试结束，22 块贴台碰撞体直接污染
+                // 自旋/袋口回归（实测 SpinTest 三个断言因此挂掉）。
+                DestroyImmediate(sh.GetComponent<Collider>());       // 纯视觉，不要碰撞体
+                sh.GetComponent<Renderer>().sharedMaterial = shadowMat;
+                sh.transform.rotation = Quaternion.Euler(90f, 0f, 0f);
+                sh.transform.localScale = new Vector3(0.135f, 0.135f, 1f);   // ≈2.6×球径（PCOL 同值）
+                sh.transform.position = new Vector3(go.transform.position.x, 0.0012f, go.transform.position.z);
+                bc.shadowQuad = sh.transform;
+            }
             gm.balls.Add(bc);
             if (kind == BallKind.Cue) gm.cue = bc;                    // 第 0 颗是白球
         }
@@ -307,8 +459,8 @@ public class Bootstrapper : MonoBehaviour
         gm.cueCtl = cc;                             // 先互相注入再 Build（Build 里要用到 cc）
         ui.Build();
 
-        // v0.46：音效（AudioListener 已挂在主相机上）。在 GameSettings.Load 之前创建没问题——
-        // 播放只发生在对局中，届时设置已就绪；Sfx 内部读 GameSettings.SfxOn 决定是否出声。
+        // v1.0：音效只剩胜利号角（AudioListener 已挂在主相机上）。在 GameSettings.Load 之前
+        // 创建没问题——播放只发生在对局结束，届时设置已就绪；Sfx 内部读 GameSettings.SfxOn。
         Sfx.Init(transform);
 
         // 用户设置最后应用（帧率/分辨率/阴影），覆盖上方的占位与默认画质
@@ -319,24 +471,32 @@ public class Bootstrapper : MonoBehaviour
         Debug.Log("[SNOOKER] Bootstrap done");
     }
 
-    /// 灯光：一盏主平行光（带软阴影）+ 一盏反向补光（提亮背光面），环境光冷灰。
+    /// 灯光（v0.56 写实化）：台球厅的"暗厅亮桌"语言——
+    /// 环境光/平行光压到极低（厅内太阳透不进来），主桌照明交给吊灯位置的聚光灯
+    /// （真实球房就是一盏灯照亮一张桌，其余沉在暗处）。参考 PCOL 的布光结构：
+    /// 桌上方一盏近乎全向的强光（其 Babylon 实现 intensity 60/angle 175°）+
+    /// 其余照明全部烘焙；我们用"1 盏带软阴影的 Spot + 低强度点光"表达同一观感。
     void Lighting()
     {
         var sunGo = new GameObject("SunLight");
         var sun = sunGo.AddComponent<Light>();
         sun.type = LightType.Directional;
         sunGo.transform.rotation = Quaternion.Euler(55f, -35f, 0f);   // 从右上前方 55° 俯照
-        sun.intensity = 1.05f;
+        sun.intensity = 0.10f;                     // v0.56：1.05 → 0.10（暗厅，只剩"漏光"级的自然光）
         sun.shadows = LightShadows.Soft;
 
         var fillGo = new GameObject("FillLight");
         var fill = fillGo.AddComponent<Light>();
         fill.type = LightType.Directional;
         fillGo.transform.rotation = Quaternion.Euler(35f, 145f, 0f);  // 从反方向补光
-        fill.intensity = 0.35f;
+        fill.intensity = 0f;                       // v0.56：0.35 → 0（补光会把暗厅洗灰）
 
-        RenderSettings.ambientMode = AmbientMode.Flat;                // 平坦环境光
-        RenderSettings.ambientLight = new Color(0.34f, 0.37f, 0.42f); // 冷灰色环境光
+        // v0.56：Trilight 三色环境光（顶亮/腰中/底暗）——等效 PCOL 光探针的"房间漫射"项：
+        // 低机位看到的球背光面靠环境光的 equator 项照亮，纯 Flat 会把球侧面压成死灰。
+        RenderSettings.ambientMode = AmbientMode.Trilight;
+        RenderSettings.ambientSkyColor = new Color(0.26f, 0.26f, 0.28f);
+        RenderSettings.ambientEquatorColor = new Color(0.20f, 0.20f, 0.21f);
+        RenderSettings.ambientGroundColor = new Color(0.10f, 0.105f, 0.095f);
         RenderSettings.fog = false;
     }
 
@@ -352,6 +512,22 @@ public class Bootstrapper : MonoBehaviour
         cam.farClipPlane = 60f;
         cam.clearFlags = CameraClearFlags.SolidColor;
         cam.backgroundColor = new Color(0.055f, 0.07f, 0.09f);
+        // v0.56：ACES 全屏调色（PCOL 光影的最后一块——它每个 shader 里都有 ACES：
+        // 高光柔和滚落 + 暗部上提 + 对比度，是"写实感"的另一半）。RT→RT 确定性路径，
+        // 详见 ScreenGrade.cs / ColorGrade.shader 文件头。
+        camGo.AddComponent<ScreenGrade>();
+        // v0.56：相机补面灯（无阴影、短射程、极弱）——低机位俯身瞄准时球的镜头面
+        // 只有环境光（所有灯都在头顶，N·L≈0），PCOL 靠 IBL 探针的暖漫射解决，
+        // 我们用这盏相机跟随的弱光等效同一件事。
+        var faceFillGo = new GameObject("CameraFaceFill");
+        faceFillGo.transform.SetParent(camGo.transform, false);
+        faceFillGo.transform.localPosition = new Vector3(0f, 0.05f, 0.25f);
+        var faceFill = faceFillGo.AddComponent<Light>();
+        faceFill.type = LightType.Point;
+        faceFill.color = new Color(1f, 0.96f, 0.88f);
+        faceFill.intensity = 0.45f;
+        faceFill.range = 2.6f;
+        faceFill.shadows = LightShadows.None;
         // v0.44f：液态玻璃的折射/反射源。场景采样三方案（GrabPass/命令缓冲/
         // OnRenderImage）在真机 GLES3 上均间歇性黑帧，最终改用最保守的多相机
         // 渲染：GlassSceneCamera 子相机每帧把场景绘到半分辨率 RT（确定性 100%），
@@ -368,20 +544,24 @@ public class Bootstrapper : MonoBehaviour
     private MatSet Materials()
     {
         // 台呢布纹贴图（Blender 烘焙，1024²=1m×1m 无缝平铺，Resources/Textures 下）。
-        // 有贴图时颜色改白色由贴图提供绿色；没有时退回纯色，保证旧资源也能跑。
-        // v0.55：tint 按袋口实拍校准——呢面调亮偏黄绿（照片是鲜草绿）。
+        // v0.56：tint 按 PCOL 的台呢反照率校准——其线性色 (0.008,0.07,0.015) 折算 sRGB
+        // ≈ (0.10,0.29,0.13) 的"赛事深绿"；我们的布纹贴图均值 ≈ (0.095,0.45,0.21)，
+        // 反除得 tint ≈ (1.0,0.65,0.62)。没有贴图时退回纯色（直接用校准后的绿）。
         var clothTex = Resources.Load<Texture2D>("Textures/cloth_texture");
-        var cloth = NewMat("Cloth", clothTex != null ? new Color(0.55f, 0.95f, 0.42f) : G.ClothCol, 0.95f, 0f);
+        var cloth = NewMat("Cloth", clothTex != null ? new Color(0.92f, 0.60f, 0.58f) : new Color(0.10f, 0.30f, 0.135f), 0.95f, 0f);
         if (clothTex != null) cloth.mainTexture = clothTex;      // UV 按米平铺（cube project 1.0）
-        // 库边用同一张贴图乘一个略深的冷色调，与台呢区分
-        var cushion = NewMat("Cushion", clothTex != null ? new Color(0.50f, 0.90f, 0.42f) : G.CushionCol, 0.9f, 0f);
+        ApplyNormalMap(cloth, "Textures/cloth_normal", 0.22f);   // v0.56：织纹法线（灯下可见细密凹凸）
+        // 库边同一张贴图乘略深的色调，与台呢区分
+        var cushion = NewMat("Cushion", clothTex != null ? new Color(0.84f, 0.55f, 0.53f) : new Color(0.085f, 0.26f, 0.12f), 0.95f, 0f);
         if (clothTex != null) cushion.mainTexture = clothTex;
+        ApplyNormalMap(cushion, "Textures/cloth_normal", 0.22f);
 
         var woodTex = Resources.Load<Texture2D>("Textures/wood_texture");
-        // 桌框/桌腿木纹贴图（v0.31，Blender 程序化木纹烘焙，UV 按米平铺）；无贴图退回纯色
-        // v0.55：tint 调成深灰黑（照片木框近黑，旧值 1.35/1.2/1.1 偏红棕）
-        var wood = NewMat("Wood", woodTex != null ? new Color(0.42f, 0.42f, 0.46f) : G.WoodCol, 0.45f, 0f);
+        // 桌框/桌腿木纹贴图；v0.56：tint 校准为 PCOL 的深胡桃木（其 albedo 均值
+        // ≈ sRGB (0.13,0.08,0.05)——近黑的深棕，亮部才显出木纹），并接木纹法线。
+        var wood = NewMat("Wood", woodTex != null ? new Color(0.34f, 0.30f, 0.28f) : new Color(0.14f, 0.09f, 0.06f), 0.55f, 0f);
         if (woodTex != null) wood.mainTexture = woodTex;
+        ApplyNormalMap(wood, "Textures/wood_normal", 0.6f);
 
         return new MatSet
         {
@@ -393,10 +573,23 @@ public class Bootstrapper : MonoBehaviour
             shaft = NewMat("CueShaft", new Color(0.80f, 0.58f, 0.35f), 0.3f, 0.1f),
             butt = NewMat("CueButt", new Color(0.10f, 0.06f, 0.04f), 0.3f, 0.1f),
             // v0.55：袋口皮革颚板（实拍米黄，略带磨损感 → roughness 0.5）
-            leather = NewMat("JawLeather", new Color(0.86f, 0.70f, 0.44f), 0.5f, 0f),
+            leather = NewMat("JawLeather", new Color(0.74f, 0.60f, 0.38f), 0.55f, 0f),
             // v0.55：蜂窝网兜（net_texture.png 预导入，白绳黑网眼；缺失退白纯色）
             net = MakeNetMaterial()
         };
+    }
+
+    /// <summary>
+    /// v0.56：给 Standard 材质接一张切线空间法线贴图（Resources 预导入的 PNG）。
+    /// 缺失时静默跳过（旧资源也能跑）。bumpScale 是 Standard 的 _BumpScale 量纲。
+    /// </summary>
+    private static void ApplyNormalMap(Material m, string texPath, float bumpScale)
+    {
+        var t = Resources.Load<Texture2D>(texPath);
+        if (t == null) return;
+        m.EnableKeyword("_NORMALMAP");
+        m.SetTexture("_BumpMap", t);
+        m.SetFloat("_BumpScale", bumpScale);
     }
 
     /// v0.55：网兜材质——蜂窝贴图预导入（踩坑 4：预导入才可靠，不做运行时生成）。
@@ -406,6 +599,144 @@ public class Bootstrapper : MonoBehaviour
         var m = NewMat("PocketNet", tex != null ? Color.white : new Color(0.90f, 0.90f, 0.88f), 0.85f, 0f);
         if (tex != null) m.mainTexture = tex;
         return m;
+    }
+
+    /// <summary>
+    /// v0.57：主桌吊灯按 PCOL 美术重建（程序化搭建，零 Blender 依赖）。
+    ///
+    /// PCOL 的灯（其 mainlight-com 贴图 + 场景 MainLight 网格）：一盏宽扁的
+    /// 长方形灯箱——黑色哑光罩体、罩底一整面过曝的白色发光板、单根细吊杆连到天花。
+    /// 本方法在 (lx, ·, 0) 处：隐藏模型自带的旧罩体/旧发光件 → 搭建
+    ///   ① 吊杆：细圆柱（r=0.012）从天花(2.68)到罩顶；
+    ///   ② 罩体：4 片向外倾斜 12° 的侧板（顶小底大的梯形箱）+ 顶盖，近黑哑光；
+    ///   ③ 发光底板：罩口正下方的自发光白色面片（尺寸略内收，即 PCOL 那面"亮瞎眼"的灯板），
+    ///      反射探针里的球面高光主要来自它。
+    /// 注意：必须在 BuildReflectionProbe() 之前调用（探针要拍到新灯）。
+    /// </summary>
+    private void BuildPcolLamp(float lx)
+    {
+        // ① 隐藏旧罩体三件 + v0.56 的旧发光面片（LampGlowBottom_0 / LampGlowSkirt_0_*）
+        string[] obsolete = {
+            "Shade_Out_0", "Shade_In_0", "Shade_Panel_0",
+            "LampGlowBottom_0", "LampGlowSkirt_0_0", "LampGlowSkirt_0_1",
+            "LampGlowSkirt_0_2", "LampGlowSkirt_0_3" };
+        foreach (var n in obsolete)
+        {
+            var go = GameObject.Find(n);
+            if (go != null) go.SetActive(false);
+        }
+
+        // 几何参数（米；对照 PCOL 截图比例，其罩长约等于桌宽、高只有 ~0.3）
+        const float SH_TOP_Y = 1.86f, SH_BOT_Y = 1.60f;   // 罩体上下沿
+        const float HALF_TOP_X = 1.02f, HALF_TOP_Z = 0.42f;
+        const float HALF_BOT_X = 1.30f, HALF_BOT_Z = 0.58f;
+        const float CEIL_Y = 2.66f;                        // 天花板底
+
+        // 材质：罩体近黑哑光；灯板过曝自发光（暖白）
+        var shadeMat = NewMat("PcolLampShade", new Color(0.022f, 0.022f, 0.025f), 0.55f, 0f);
+        var panelMat = new Material(Shader.Find("Standard"));
+        panelMat.name = "PcolLampPanel";
+        panelMat.color = new Color(0.01f, 0.01f, 0.01f);
+        panelMat.EnableKeyword("_EMISSION");
+        panelMat.SetColor("_EmissionColor", new Color(1f, 0.97f, 0.90f) * 4.2f);
+        panelMat.globalIlluminationFlags = MaterialGlobalIlluminationFlags.RealtimeEmissive;
+
+        var root = new GameObject("PcolLamp");
+        root.transform.position = new Vector3(lx, 0f, 0f);
+
+        // ② 吊杆
+        var rod = GameObject.CreatePrimitive(PrimitiveType.Cylinder);
+        DestroyImmediate(rod.GetComponent<Collider>());
+        rod.name = "LampRod";
+        rod.GetComponent<Renderer>().sharedMaterial = NewMat("PcolLampRod", new Color(0.03f, 0.03f, 0.035f), 0.45f, 0f);
+        rod.transform.SetParent(root.transform, false);
+        rod.transform.localPosition = new Vector3(0f, (SH_TOP_Y + CEIL_Y) * 0.5f, 0f);
+        rod.transform.localScale = new Vector3(0.024f, (CEIL_Y - SH_TOP_Y) * 0.5f, 0.024f);
+
+        // ③ 罩体：4 片梯形侧板（顶小底大，向外倾）+ 顶盖。侧板用逐顶点构造的梯形四边形。
+        var shell = new GameObject("LampShell");
+        shell.transform.SetParent(root.transform, false);
+
+        // 侧板参数：longSide=沿 X 的南北两片（长 HALF_BOT_X*2）；shortSide=东西两片
+        BuildTrapezoidPanel(shell, shadeMat, true, +1, HALF_TOP_X, HALF_TOP_Z, HALF_BOT_X, HALF_BOT_Z, SH_TOP_Y, SH_BOT_Y);
+        BuildTrapezoidPanel(shell, shadeMat, true, -1, HALF_TOP_X, HALF_TOP_Z, HALF_BOT_X, HALF_BOT_Z, SH_TOP_Y, SH_BOT_Y);
+        BuildTrapezoidPanel(shell, shadeMat, false, +1, HALF_TOP_Z, HALF_TOP_X, HALF_BOT_Z, HALF_BOT_X, SH_TOP_Y, SH_BOT_Y);
+        BuildTrapezoidPanel(shell, shadeMat, false, -1, HALF_TOP_Z, HALF_TOP_X, HALF_BOT_Z, HALF_BOT_X, SH_TOP_Y, SH_BOT_Y);
+
+        // 顶盖
+        var top = GameObject.CreatePrimitive(PrimitiveType.Quad);
+        DestroyImmediate(top.GetComponent<Collider>());
+        top.name = "LampTop";
+        top.GetComponent<Renderer>().sharedMaterial = shadeMat;
+        top.transform.SetParent(shell.transform, false);
+        top.transform.localPosition = new Vector3(0f, SH_TOP_Y, 0f);
+        top.transform.rotation = Quaternion.Euler(90f, 0f, 0f);      // 面朝下
+        top.transform.localScale = new Vector3(HALF_TOP_X * 2f, HALF_TOP_Z * 2f, 1f);
+
+        // ④ 发光底板（罩口正下方，略内收——PCOL 的灯板不伸出罩沿）
+        var panel = GameObject.CreatePrimitive(PrimitiveType.Quad);
+        DestroyImmediate(panel.GetComponent<Collider>());
+        panel.name = "LampPanel";
+        panel.GetComponent<Renderer>().sharedMaterial = panelMat;
+        panel.transform.SetParent(root.transform, false);
+        panel.transform.localPosition = new Vector3(0f, SH_BOT_Y - 0.012f, 0f);
+        panel.transform.rotation = Quaternion.Euler(90f, 0f, 0f);    // 面朝下
+        panel.transform.localScale = new Vector3(HALF_BOT_X * 1.7f, HALF_BOT_Z * 1.7f, 1f);
+    }
+
+    /// v0.57：灯罩的一片梯形侧板（顶边小、底边大，法线朝外）。
+    /// longSide=true：沿 X 长（南北片，法线 ±Z）；false：沿 Z 长（东西片，法线 ±X）。
+    private void BuildTrapezoidPanel(GameObject parent, Material mat, bool longSide, int sign,
+                                     float halfTopA, float halfTopB, float halfBotA, float halfBotB,
+                                     float yTop, float yBot)
+    {
+        // 8 顶点：上沿两点 (±halfTopA, yTop, ±halfTopB) / 下沿两点 (±halfBotA, yBot, ±halfBotB)
+        var verts = new Vector3[4];
+        if (longSide)
+        {
+            verts[0] = new Vector3(-halfTopA, yTop, sign * halfTopB);
+            verts[1] = new Vector3(+halfTopA, yTop, sign * halfTopB);
+            verts[2] = new Vector3(+halfBotA, yBot, sign * halfBotB);
+            verts[3] = new Vector3(-halfBotA, yBot, sign * halfBotB);
+        }
+        else
+        {
+            verts[0] = new Vector3(sign * halfTopB, yTop, -halfTopA);
+            verts[1] = new Vector3(sign * halfTopB, yTop, +halfTopA);
+            verts[2] = new Vector3(sign * halfBotB, yBot, +halfBotA);
+            verts[3] = new Vector3(sign * halfBotB, yBot, -halfBotA);
+        }
+        var mesh = new Mesh();
+        mesh.name = "lampPanel";
+        mesh.vertices = verts;
+        // 绕序保证法线朝外（longSide 外=sign*Z；shortSide 外=sign*X）：从罩外看逆时针
+        if (longSide) mesh.triangles = sign > 0 ? new[] { 0, 1, 2, 0, 2, 3 } : new[] { 0, 2, 1, 0, 3, 2 };
+        else mesh.triangles = sign > 0 ? new[] { 0, 2, 1, 0, 3, 2 } : new[] { 0, 1, 2, 0, 2, 3 };
+        mesh.RecalculateNormals();
+        var go = new GameObject("LampSide", typeof(MeshFilter), typeof(MeshRenderer));
+        go.GetComponent<MeshFilter>().sharedMesh = mesh;
+        go.GetComponent<MeshRenderer>().sharedMaterial = mat;
+        go.transform.SetParent(parent.transform, false);
+    }
+
+    /// v0.56：球台反射探针（见 Init 四b 的说明）。
+    /// 注意必须 AllFacesAtOnce 一次性烘焙——IndividualFaces 分帧模式要等编辑器
+    /// 派帧，叠加"播放模式进入"时机时观察到 ShotTest 反复冻在 entering play mode。
+    private void BuildReflectionProbe()
+    {
+        var probeGo = new GameObject("TableReflectionProbe");
+        probeGo.transform.position = new Vector3(0f, 0.35f, 0f);   // 球心高度附近
+        var rp = probeGo.AddComponent<ReflectionProbe>();
+        rp.center = Vector3.zero;
+        rp.size = new Vector3(4.8f, 2.4f, 3.0f);                   // 覆盖整张球台
+        rp.intensity = 1f;
+        rp.boxProjection = true;
+        rp.resolution = 512;
+        rp.clearFlags = ReflectionProbeClearFlags.SolidColor;
+        rp.backgroundColor = new Color(0.03f, 0.035f, 0.045f);     // 暗厅底色
+        rp.refreshMode = ReflectionProbeRefreshMode.ViaScripting;
+        rp.timeSlicingMode = ReflectionProbeTimeSlicingMode.AllFacesAtOnce;
+        rp.RenderProbe();
     }
 
     /// 建一个 Standard 材质。rough：粗糙度(0~1，越大越哑光)；metal：金属度(0~1)。

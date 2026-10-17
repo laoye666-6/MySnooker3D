@@ -5,7 +5,7 @@
 彩球回点、清彩、只剩黑球终局、指定彩球、犯规与未击到 Miss、自由球），辅助瞄准线可随时开关，
 另带入场运镜、设置界面、单杆分 HUD 与 147 满分提示。
 
-**已开源**：https://github.com/laoye666-6/MySnooker3D （public / MIT，Latest Release v0.49 附 APK 直链）
+**已开源**：https://github.com/laoye666-6/MySnooker3D （public / MIT，Latest Release v1.0 附 APK 直链）
 
 ## 目录结构
 
@@ -20,14 +20,14 @@ E:\Snooker\
 │  ├─ shrink_pockets.py         # 【已废弃】早期按 scale 缩袋口黑柱；v0.29 起改由 make_table.py 参数控制
 │  ├─ pool_hall.blend           # 台球厅环境场景（贴图已打包自包含；见 pool_hall_README.md）
 │  └─ pool_hall_README.md       # 场景构成 / 资源授权（Poly Haven CC0）/ Unity 集成注意
-├─ shaders\                     # LiquidGlass.shader + GlassBlur.shader 母本
+├─ shaders\                     # LiquidGlass / GlassBlur / ColorGrade / BallShadow 母本
 │                               #（sync.bat 只同步 *.cs，需手工拷入工程）
 ├─ android\                     # AndroidManifest.xml 母本（含 VIBRATE 权限，同上手工拷入）
 ├─ assets\                      # 产物：table.obj/cue.obj(+.mtl)、cloth_texture.png、wood_texture.png、
 │                               #       icon.png、preview_persp.png、preview_top.png、
-│                               #       audio\sfx_{cue,ball,cush}_{1..3}.wav（音效，v0.46）
+│                               #       audio\sfx_win_1.wav（胜利号角；v1.0 起碰撞音效已删）
 ├─ unity_src\                   # 【源码母本 · 权威】改动先写这里，再跑 tools\sync.bat 同步
-│  ├─ Scripts\                  # 游戏运行时代码（16 个，同步到 Unity 工程）
+│  ├─ Scripts\                  # 游戏运行时代码（18 个，同步到 Unity 工程）
 │  │  ├─ G.cs                  # 标准尺寸常量 / 球种 / 分值 / 颜色
 │  │  ├─ Bootstrapper.cs       # 开局自建场景：灯光/相机/球桌物理碰撞体/22颗球/UI
 │  │  ├─ GameManager.cs        # 状态机 + 规则落地（加分/回点/换手/终局）+ IsSnookered 几何判定
@@ -41,18 +41,18 @@ E:\Snooker\
 │  │  ├─ UIGlass.cs            # 液态玻璃图形（圆角/胶囊/圆形/描边环零贴图顶点网格）
 │  │  ├─ UIJelly.cs            # 按钮 Q 弹动画（按下压扁/松手欠阻尼弹簧过冲回弹）
 │  │  ├─ Haptics.cs            # 按钮触感反馈（安卓 VibrationEffect，轻/重两档）
-│  │  ├─ Sfx.cs                # 碰撞/击球音效（响度音调随速度映射；同类节流；变体随机）
+│  │  ├─ Sfx.cs                # 胜利结算号角（v1.0 起：碰撞/击球音效已删除，只剩这一条）
 │  │  ├─ GlassSceneCamera.cs   # 副相机：每帧渲染半分辨率场景 RT 供玻璃折射/光晕采样
 │  │  └─ GameSettings.cs       # 帧率 60/90/120/144、分辨率 50/75/100%、阴影、音效，PlayerPrefs 持久化
 │  └─ Editor\
 │     ├─ BuildGame.cs          # 命令行构建（-x86only 可选，仅模拟器调试用；版本号在此改）
 │     ├─ PhysTest.cs           # 编辑器内离线物理回归四入口（开球/库边/加塞/袋口；免打包快速验证）
-│     ├─ RuleTest.cs           # 规则回归断言（58 条，不走物理、不需模拟器）
-│     └─ ShotTest.cs           # 编辑器内自动截图驱动（一条时间线出 11 张关键帧，含袋口特写）
+│     ├─ RuleTest.cs           # 规则回归断言（65 条，不走物理、不需模拟器）
+│     └─ ShotTest.cs           # 编辑器内自动截图驱动（一条时间线出 17 帧关键帧，含袋口特写）
 ├─ tools\                       # m.bat: adb 快捷命令 | sync.bat: unity_src → 工程 同步
-│                               # make_audio.py: 程序化合成碰撞音效 WAV（v0.46）
+│                               # make_audio.py: 程序化合成胜利号角 WAV（v1.0 起只出这一条）
 ├─ shots\                       # 验收截图：MuMu 实测 117 张（s01~s45 + v0xx_* 逐版本 + pocketrender_* 袋口特写）
-│                               #   无头编辑器截图（ShotTest 出图）另存于 shots\editor\（11 张）
+│                               #   无头编辑器截图（ShotTest 出图）另存于 shots\editor\（17 帧）
 ├─ logs\                        # 构建/测试日志
 ├─ README.md                    # 本文件（目录结构 / 构建 / 踩坑 / 版本记录）
 ├─ CONTEXT_SUMMARY.md           # 完整压缩上下文（供导入其它 AI 助手继续开发）
@@ -64,10 +64,10 @@ E:\Snooker\
    └─ PUBLISH_TO_GITHUB.bat     # 发布脚本（纯 ASCII）
 
 E:\Snooker3D\                   # Unity 工程根
-├─ Assets\Scripts, Assets\Editor          # 由 sync.bat 同步（16 个运行时 + 4 个 Editor）
+├─ Assets\Scripts, Assets\Editor          # 由 sync.bat 同步（18 个运行时 + 5 个 Editor）
 ├─ Assets\Resources\Models\table.obj,cue.obj(+.mtl)
 ├─ Assets\Resources\Textures\cloth_texture.png, wood_texture.png
-├─ Assets\Resources\Audio\sfx_*.wav        # 碰撞音效（从 assets\audio\ 手工拷入，v0.46）
+├─ Assets\Resources\Audio\sfx_win_1.wav     # 胜利号角（v1.0：碰撞音效 9 个 WAV 已删除）
 ├─ Assets\Resources\Shaders\LiquidGlass.shader   # 液态玻璃（从 shaders\ 母本手工拷入）
 ├─ Assets\Plugins\Android\AndroidManifest.xml     # 含 VIBRATE 权限（从 android\ 母本手工拷入）
 ├─ Assets\Resources\Fonts\DroidSansFallback.ttf   # 【实际在用】中文 UI 字体（Apache-2.0）
@@ -112,7 +112,7 @@ E:\Snooker\tools\sync.bat
 "D:\Program Files\STEAM\steamapps\common\Blender\blender.exe" -b -P E:\Snooker\blender\make_table.py
 :: 然后把 E:\Snooker\assets\*.obj 拷到 Assets\Resources\Models\
 
-:: 6. 重新生成碰撞音效（改音色后；v0.46）
+:: 6. 重新生成胜利号角（改音色后；v1.0 起只生成 sfx_win_1.wav）
 python E:\Snooker\tools\make_audio.py
 :: 然后把 E:\Snooker\assets\audio\*.wav 拷到 Assets\Resources\Audio\
 ```
@@ -143,7 +143,8 @@ python E:\Snooker\tools\make_audio.py
 - **自由球（v0.35）**：被判自由球时 HUD 出现「自由球：可指定任意一颗球作为球 on」提示
 - **双人**：同屏轮流击球，顶部记分板实时显示比分/目标球/剩余红球
 - **设置**（主菜单或 HUD 左下"设置"）：帧率上限、渲染分辨率、画面阴影、**物理步长**
-  （0.5ms / 1ms / 2ms，默认 2ms；改动立即生效并持久化，重启后沿用）、**音效开/关**（v0.46）
+  （0.5ms / 1ms / 2ms，默认 2ms；改动立即生效并持久化，重启后沿用）、**音效开/关**
+  （v1.0 起只控制胜利结算号角——击球/碰撞音效已删除）
 
 ## 已实现规则（v0.34 起为完整斯诺克规则，判定集中在纯函数 SnookerRules.cs）
 
@@ -200,7 +201,7 @@ python E:\Snooker\tools\make_audio.py
 14. **规则判定必须写成纯函数**：v0.33 那个"清彩阶段目标球与白球同杆落袋 → 该球不回点、目标又无法
     推进 → 一局永远打不完"的致命死局，根因就是规则判断散在 `GameManager` 的物理结算里，
     只能在模拟器上真打才可能发现。v0.34 起规则集中在 `SnookerRules.cs`（纯函数），
-    由 `Editor/RuleTest.cs` 离线断言（v0.34 为 30 条，v0.35 扩至 44 条，v0.43 为 **58 条**）。**改规则必须跑它。**
+    由 `Editor/RuleTest.cs` 离线断言（v0.34 为 30 条，v0.35 扩至 44 条，v0.53 起为 **65 条**）。**改规则必须跑它。**
 15. **UI 不要重复乘缩放系数**：`CanvasScaler(match 0.5)` 的 scaleFactor 已经等于 `K()`，
     再给 `RectTransform.anchoredPosition` 乘 `K()` 就是二次缩放（147 横幅与设置面板曾因此错位）。
     IMGUI 文字同理：`CRect` 已含 `k`，别再乘。
@@ -428,6 +429,27 @@ python E:\Snooker\tools\make_audio.py
 **尚未集成进 Unity 工程**（下一轮：Bootstrapper 加载 GLB + 游戏内灯光布点 + 移动端贴图降级）。
 
 ## 版本记录
+
+### v1.0（第 58 次迭代）—— 删除碰撞音效，正式版号 1.0
+
+- **删除 v0.46 的三类碰撞音效**：击球"嗒"（`Sfx.Cue`）、球碰球"咔"（`Sfx.Ball`）、
+  球碰库"噗"（`Sfx.Cush`）连同速度→响度/音调映射、变体随机、同类节流与 10 路音源池一并移除；
+  `BallController.CollisionSfx()`（含实例 ID 防双响、法向相对速度）与
+  `GameManager.Shoot()` 里的 `Sfx.Cue` 调用删除。
+  `Assets/Resources/Audio` 下对应的 9 个 WAV（`sfx_cue/ball/cush_1..3`）已删，APK 同步瘦身。
+- **保留** v0.51 的胜利结算号角 `sfx_win_1`（`Sfx.Win()`）与设置面板「音效」开关
+  —— 该开关现在只控制号角；`Sfx.cs` 由 149 行精简到约 70 行（只剩号角与 2 路音源）。
+- `tools/make_audio.py` 同步精简：只生成 `sfx_win_1.wav`（碰撞音效的合成代码留在 git 历史里）。
+- **装机冒烟发现并修复两处"只在设备上暴露"的渲染问题**（编辑器里都正常，v0.56/57 从未出过包）：
+  ① 每颗球的贴地假阴影在 MuMu/GLES3 上变成**硬边黑方块**——旧实现是运行时
+  `new Material(Standard)` + `_ALPHABLEND_ON`，构建时该 keyword 变体不被收集 + 贴图 alpha
+  在移动端有丢失风险；改为专用无光照程序化 shader **`BallShadow.shader`**（单变体、
+  不采样贴图、uv 半径算 alpha，`_Color.a` 仍由 BallController 用 MPB 写入）。
+  ② 出杆后全景机位（2.5m）从罩顶上方俯视时，吊灯罩体侧板**单面剔除** → 视线穿透罩体
+  看到白色发光板，屏幕顶部一大块白楔；`BuildTrapezoidPanel` 改为**双面**（复制顶点 +
+  反向绕序），与真实灯罩的双面金属板一致。
+- 版本号 0.57 → **1.0**（versionCode 57 → 58），BuildGame 的读回校验同步改为 1.0/58。
+- 回归 5 道全绿（规则 65/65、库边 3×bounced、ALL SPIN OK、袋口 PASS=6）；APK 双架构 IL2CPP。
 
 ### v0.55（第 55 次迭代）—— 袋口按实拍重建（皮革颚板 / 蜂窝网兜 / 大弧颚）
 

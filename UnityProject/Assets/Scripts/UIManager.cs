@@ -15,7 +15,7 @@
 //   - 按钮触感反馈见 Haptics.cs（按下轻点、主按钮确认重点）。
 //
 // 设置面板：帧率上限（60/90/120/144）/ 渲染分辨率（50%/75%/100%）/ 画面阴影（开/关）/
-//           物理步长（0.5/1/2ms）/ 音效开/关（v0.46），
+//           物理步长（0.5/1/2ms）/ 音效开/关（v1.0 起只控制胜利号角），
 //           改动即通过 GameSettings.Apply() 生效并持久化（PlayerPrefs）。
 // =====================================================================================
 using System.Collections.Generic;
@@ -49,6 +49,7 @@ public class UIManager : MonoBehaviour
     private string p1Break = "0", p2Break = "0";          // 双方当前单杆分
     private string centerText = "", msgText = "";
     private string aimHudText = "", aimMenuText = "", powerText = "";
+    private string standText = "起立观察";               // v0.57：起立/俯身按钮文字
     private float msgTimer;
 
     // ---- v0.51：胜利结算动画（终局取代旧版"一行字淡入"）----
@@ -95,29 +96,28 @@ public class UIManager : MonoBehaviour
     private CanvasGroup msgPillCG, cueHandPillCG, ballOnPillCG;
     private UIGlass ballOnPill;                           // 指定彩球/自由球共用，随状态换色
 
-    // ---- v0.44：iOS 液态玻璃配色（高饱和但偏淡的系统色，以透明为主体）----
-    // 菜单期大面板：淡色磨砂玻璃——磨砂底不透明度高，模糊后的彩色场景从玻璃里透出
-    // 才有"液态玻璃"感（面板 alpha 太低时清晰场景直接穿透，磨砂感会消失）；
-    // 游戏内 HUD 与控件：真半透明浅玻璃 + 墨色字；主操作 = 系统绿胶囊。
-    // v0.53：去白边靠 shader（_Rim/_Sheen/_EdgeAlpha/_Frost 已下调）。但大面板（菜单/设置/结算/
-    // 复位弹窗）是"浅色玻璃板"——台球厅很暗，玻璃一透面板就变暗，板上深色墨字会读不清；
-    // 故面板填充反而调高（浅色板 + 墨字 = 可读），HUD/顶栏/胶囊/按钮在亮台面上方可用低 alpha。
-    private static readonly Color GlassSheet   = new Color(0.78f, 0.82f, 0.90f, 0.64f); // 菜单/结算浅色玻璃板
-    private static readonly Color GlassPanel   = new Color(0.78f, 0.82f, 0.90f, 0.66f); // 设置/复位面板浅色玻璃板
-    private static readonly Color GlassWhite   = new Color(1f, 1f, 1f, 0.16f);          // HUD 顶条（更透）
-    private static readonly Color GlassNeutral = new Color(1f, 1f, 1f, 0.18f);          // 次级按钮（更透）
-    private static readonly Color GlassStrong  = new Color(1f, 1f, 1f, 0.22f);          // 提示胶囊/弹层（更透）
-    private static readonly Color GlassGreen   = new Color(0.22f, 0.72f, 0.42f, 0.42f); // 主操作（iOS 绿）
-    private static readonly Color GlassBlue    = new Color(0.28f, 0.58f, 1f, 0.40f);    // 强调操作（iOS 蓝）
-    private static readonly Color MintPill     = new Color(0.74f, 0.95f, 0.80f, 0.22f); // "球在手/自由球"薄荷胶囊
-    private static readonly Color ChipBlue     = new Color(0.25f, 0.62f, 1f, 0.42f);    // 玩家1 阵营点
-    private static readonly Color ChipRed      = new Color(1f, 0.36f, 0.33f, 0.42f);    // 玩家2 阵营点
-    private static readonly Color Ink          = new Color(0.08f, 0.09f, 0.11f);        // 主文字（浅玻璃上）
-    private static readonly Color Ink2         = new Color(0.34f, 0.36f, 0.42f, 0.85f); // 次级文字
-    private static readonly Color AccentOrange = new Color(1f, 0.58f, 0.0f);            // 单杆分/147（iOS 橙）
+    // ---- v0.56：iOS 深色液态玻璃配色（暗色玻璃板 + 全白字体）----
+    // 改暗色的两个原因：① 台球厅本就是暗环境（PCOL 同款"暗厅亮桌"），深色玻璃板
+    // 与场景是同一语言，浅色板在暗厅里反而像一块"浮着的灰布"；② 用户要求全部字体
+    // 改白——白字必须配深色底才读得清（v0.53 踩坑 48 的镜像结论：底与字要一起换）。
+    // 玻璃磨砂由 shader 的 _Desat/_Frost 提供（UIGlass 预设已加大去饱和，
+    // 场景里的绿呢/彩纸不再透上来闪烁），板面本身保持低饱和深灰蓝。
+    private static readonly Color GlassSheet   = new Color(0.10f, 0.12f, 0.16f, 0.52f); // 菜单/结算深色玻璃板（v0.56：透一档，灯池可读）
+    private static readonly Color GlassPanel   = new Color(0.10f, 0.12f, 0.16f, 0.70f); // 设置/复位深色玻璃板
+    private static readonly Color GlassWhite   = new Color(0.09f, 0.11f, 0.15f, 0.42f); // HUD 顶条（深烟玻璃）
+    private static readonly Color GlassNeutral = new Color(0.10f, 0.12f, 0.16f, 0.40f); // 次级按钮
+    private static readonly Color GlassStrong  = new Color(0.10f, 0.12f, 0.16f, 0.52f); // 提示胶囊/弹层
+    private static readonly Color GlassGreen   = new Color(0.16f, 0.60f, 0.34f, 0.80f); // 主操作（iOS 绿）
+    private static readonly Color GlassBlue    = new Color(0.20f, 0.46f, 0.86f, 0.74f); // 强调操作（iOS 蓝）
+    private static readonly Color MintPill     = new Color(0.08f, 0.24f, 0.16f, 0.58f); // "球在手/自由球"暗薄荷胶囊
+    private static readonly Color ChipBlue     = new Color(0.25f, 0.62f, 1f, 0.42f);    // 玩家1 阵营点（图形用）
+    private static readonly Color ChipRed      = new Color(1f, 0.36f, 0.33f, 0.42f);    // 玩家2 阵营点（图形用）
+    private static readonly Color Ink          = new Color(1f, 1f, 1f);                 // 主文字：白（v0.56 全白）
+    private static readonly Color Ink2         = new Color(1f, 1f, 1f, 0.72f);          // 次级文字：白 72%
+    private static readonly Color AccentOrange = new Color(1f, 1f, 1f);                 // 单杆分/147（v0.56 全白）
     private static readonly Color Rim          = new Color(1f, 1f, 1f, 0.34f);          // 玻璃边缘高光环
     private static readonly Color Hairline     = new Color(1f, 1f, 1f, 0.22f);          // 分隔细线
-    private static readonly Color TextRed      = new Color(0.86f, 0.27f, 0.24f);        // 重新开局（iOS 红）
+    private static readonly Color TextRed      = new Color(1f, 1f, 1f);                 // 重新开局（v0.56 全白）
 
     // ---- 字号规范（v0.44）：全部 IMGUI 文字引用下列常量，不再散落字面量。----
     // 起因：此前各处手写 int 字号，同类中文出现了大小不一（如加塞盘"击球点"24 vs"中杆"26、
@@ -213,6 +213,12 @@ public class UIManager : MonoBehaviour
         Btn("NudgeR", cgo.transform, new Vector2(0.5f, 0.5f),
             Fit(new Vector2(-586, -448), new Vector2(70, 62)), new Vector2(70, 62),
             GlassNeutral, () => cc.Rotate(+CueController.NudgeStep));
+
+        // v0.57：起立观察/俯身切换（模拟真实打球时站起来看球型）。瞄准态专属，
+        // 按下切换 GameCamera.standView；文字随姿态变化（IMGUI 侧同步绘制）。
+        Btn("StandBtn", cgo.transform, new Vector2(0.5f, 0.5f),
+            Fit(new Vector2(-360, -448), new Vector2(220, 62)), new Vector2(220, 62),
+            GlassNeutral, ToggleStand);
         Btn("RestartBtn", cgo.transform, new Vector2(0.5f, 0.5f),
             Fit(new Vector2(-820, -364), new Vector2(240, 58)), new Vector2(240, 58),
             GlassNeutral, () => UnityEngine.SceneManagement.SceneManager.LoadScene(0));
@@ -235,7 +241,8 @@ public class UIManager : MonoBehaviour
         padRim.raycastTarget = false;
         padPanel.UseRefraction(1.5f, 14f, 1.3f, 0.9f, 0.6f, 0.5f);
         padPanel.raycastTarget = false;
-        padPanel.AttachShadow(12f, -6f, 0.20f, 16f);        // v0.47：加塞圆盘面板软投影
+        // v0.56：不再挂软投影——深色玻璃 + 暗厅环境里，AttachShadow 的半透明黑块
+        // 读起来就是"异常黑色圆角阴影"（主菜单/设置面板实测），玻璃描边环已足够勾勒层次。
         var padGo = new GameObject("SpinPad", typeof(RectTransform), typeof(CanvasRenderer), typeof(Image), typeof(SpinPad));
         var padRt = (RectTransform)padGo.transform;
         padRt.SetParent(padPanel.transform, false);
@@ -284,7 +291,6 @@ public class UIManager : MonoBehaviour
         // 力度百分比文字的胶囊底（常显：随 HUD 整体 CanvasGroup 一起淡出，无需单独驱动）
         var powerPillCG = MakePill("PowerPill", cgo.transform, new Vector2(600, -382), new Vector2(310, 46), GlassStrong);
         powerPillCG.alpha = 1f;
-        powerPillCG.GetComponent<UIGlass>().AttachShadow(10f, -5f, 0.18f, 14f);   // v0.47：常显胶囊投影
 
         Btn("AimMenuBtn", menu.transform, new Vector2(0.5f, 0.5f), new Vector2(0, -40), new Vector2(400, 84),
             GlassNeutral, ToggleAim);
@@ -306,7 +312,6 @@ public class UIManager : MonoBehaviour
         var overCard = UIGlass.Add(over.transform, "OverCard", new Vector2(0.5f, 0.5f),
             new Vector2(0, 540 - 408), new Vector2(980, 456), GlassPanel, 40f);
         overCard.UseBlur(16f, 0.14f, 0.10f, 0.15f);          // 大面板磨砂预设：抓背景模糊
-        overCard.AttachShadow(16f, -8f, 0.24f, 20f);         // 大卡片软投影
         overCardRT = overCard.GetComponent<RectTransform>();
         var cardRim = UIGlass.Add(overCard.transform, "OverCardRim", new Vector2(0.5f, 0.5f),
             Vector2.zero, new Vector2(988, 464), Rim, 44f);
@@ -372,7 +377,6 @@ public class UIManager : MonoBehaviour
         setRim.raycastTarget = false;
         settingsPanel = settingsGlass.gameObject;
         settingsPanelRT = settingsPanel.GetComponent<RectTransform>();
-        settingsGlass.AttachShadow(14f, -7f, 0.22f, 18f);   // v0.47：大面板软投影（插在面板与模糊底之间）
         // 注意 y 符号：pos.y = 540 - 设计y（设计坐标从顶部往下，uGUI 中心锚定 y 向上）
         // 版面（v0.46 五行，行距 105）：标题 205 → 帧率 320 → 分辨率 425 → 阴影 530 →
         // 物理步长 635 → 音效 740 → 完成 845。v0.44：标题条/菱饰移除，改 iOS sheet 的纯排版。
@@ -393,7 +397,7 @@ public class UIManager : MonoBehaviour
             GlassNeutral, () => CycleSetting(3, -1));
         Btn("StepRight", settingsRoot.transform, new Vector2(0.5f, 0.5f), new Vector2(330, -95), new Vector2(110, 72),
             GlassNeutral, () => CycleSetting(3, +1));
-        // v0.46：音效开/关（击球与碰撞音效，Sfx 播放前检查 GameSettings.SfxOn）
+        // v0.46：音效开/关（v1.0 起只控制胜利号角；Sfx 播放前检查 GameSettings.SfxOn）
         Btn("SfxLeft", settingsRoot.transform, new Vector2(0.5f, 0.5f), new Vector2(-100, -200), new Vector2(110, 72),
             GlassNeutral, () => CycleSetting(4, -1));
         Btn("SfxRight", settingsRoot.transform, new Vector2(0.5f, 0.5f), new Vector2(330, -200), new Vector2(110, 72),
@@ -423,8 +427,7 @@ public class UIManager : MonoBehaviour
             GlassStrong, 36f);
         replayGlass.raycastTarget = true;                    // 面板自身挡住下面的按钮
         replayPanel = replayGlass.gameObject;
-        replayGlass.UseBlur();                              // v0.53：与大面板同款浅色玻璃（否则用默认材质会过白）
-        replayGlass.AttachShadow(14f, -6f, 0.22f, 18f);     // v0.47：弹层软投影
+        replayGlass.UseBlur();                              // v0.53：与大面板同款深色玻璃（否则用默认材质会过白）
         // v0.45：全屏透明挡板（选框的子物体，继承其淡入/射线开关）——选框弹出期间
         // 挡住屏幕上一切点击（击球/力度/瞄准），强制先做出选择（Rule 13/14(b)）。
         // 放在选项按钮之前创建（渲染在底层），按钮仍可点击。
@@ -450,7 +453,6 @@ public class UIManager : MonoBehaviour
             GlassPanel, 40f);
         repGlass.raycastTarget = true;
         replacePanel = repGlass.gameObject;
-        repGlass.AttachShadow(16f, -8f, 0.24f, 20f);
         StretchImg("ReplaceBlocker", replacePanel.transform, new Color(0f, 0f, 0f, 0f));
         // 玩家1 行（局部 y=+40 → 设计 520）
         Btn("RepP1Yes", replacePanel.transform, new Vector2(0.5f, 0.5f), new Vector2(100, 40), new Vector2(260, 76),
@@ -488,6 +490,7 @@ public class UIManager : MonoBehaviour
         }
 
         UpdateAimLabels();
+        UpdateStandLabel();
 
         Debug.Log("[SNOOKER] UI diag screen=" + Screen.width + "x" + Screen.height +
                   " font=" + (font != null ? font.name : "NULL"));
@@ -735,7 +738,7 @@ public class UIManager : MonoBehaviour
     // ---------------------------------------------------------------------------------
     void ToggleSettings() { settingsOpen = !settingsOpen; settingsAnimT = Mathf.Clamp01(settingsAnimT); }
 
-    /// kind: 0=帧率 1=分辨率 2=阴影 3=物理步长(v0.37) 4=音效开/关(v0.46)；dir=+1/-1 循环方向。
+    /// kind: 0=帧率 1=分辨率 2=阴影 3=物理步长(v0.37) 4=音效开/关(v0.46，v1.0 起只控胜利号角)；dir=+1/-1 循环方向。
     /// 改完立即生效并持久化。
     void CycleSetting(int kind, int dir)
     {
@@ -767,6 +770,24 @@ public class UIManager : MonoBehaviour
     {
         cc.aimLineOn = !cc.aimLineOn;
         UpdateAimLabels();
+    }
+
+    /// <summary>
+    /// v0.57：起立观察/俯身切换。直接翻 GameCamera.standView（相机姿态在它的
+    /// LateUpdate 里按此开关取位）；按钮文字由 UpdateStandLabel 刷新。
+    /// </summary>
+    void ToggleStand()
+    {
+        var cam = Camera.main != null ? Camera.main.GetComponent<GameCamera>() : null;
+        if (cam == null) return;
+        cam.standView = !cam.standView;
+        UpdateStandLabel();
+    }
+
+    void UpdateStandLabel()
+    {
+        var cam = Camera.main != null ? Camera.main.GetComponent<GameCamera>() : null;
+        standText = cam != null && cam.standView ? "俯 身" : "起立观察";
     }
 
     void UpdateAimLabels()
@@ -885,8 +906,8 @@ public class UIManager : MonoBehaviour
         et.triggers.Add(downEntry);
         // Q 弹按压动画：按下压扁、松手带过冲弹回（纯程序弹簧，见 UIJelly）
         go.AddComponent<UIJelly>();
-        // v0.47：软投影（参考图药丸质感）——插在按钮正下方，随所在面板 CanvasGroup 一起淡入淡出
-        body.AttachShadow(10f, -5f, 0.20f, 16f);
+        // v0.56：不再给按钮挂软投影（AttachShadow）——暗色玻璃语境下黑色圆角软影
+        // 读作"异常黑色阴影"（用户实测主菜单/开局画面），去投影后靠描边环分层。
     }
 
     /// 力度滑条（v0.44 iOS 风：白色玻璃胶囊轨道 + 白色填充 + 圆形白球手柄 + 高光环）。
@@ -1172,6 +1193,7 @@ public class UIManager : MonoBehaviour
             DrawLabel(FittedRect(140, 1080 - 92, 240, 62), aimHudText, FontBtn, ink, TextAnchor.MiddleCenter);
             DrawLabel(FittedRect(300, 1080 - 92, 70, 62), "◀", FontArrow, ink, TextAnchor.MiddleCenter);
             DrawLabel(FittedRect(374, 1080 - 92, 70, 62), "▶", FontArrow, ink, TextAnchor.MiddleCenter);
+            DrawLabel(FittedRect(600, 1080 - 92, 220, 62), standText, FontBtn, ink, TextAnchor.MiddleCenter);   // v0.57
             DrawLabel(FittedRect(140, 1080 - 176, 240, 58), "重新开局", FontBtn, Fade(TextRed), TextAnchor.MiddleCenter);
             DrawLabel(FittedRect(420, 1080 - 176, 240, 58), "设 置", FontBtn, ink, TextAnchor.MiddleCenter);
             DrawLabel(FittedRect(700, 1080 - 176, 240, 58), "复位上一杆", FontBtn, ink, TextAnchor.MiddleCenter);  // v0.53
@@ -1216,27 +1238,29 @@ public class UIManager : MonoBehaviour
             titleT = 1f - Mathf.Pow(1f - titleT, 3f);    // easeOutCubic：与卡片弹簧同起点，观感连贯
             Color w = Color.white; w.a *= overAlpha * (againCG != null ? againCG.alpha : 0f);
 
-            // 标题：胜者名用阵营色（与 HUD 阵营点同色系），随卡片 Q 弹上滑入场
-            Color winCol = overWinner == 0 ? ChipBlue : ChipRed;
+            // 标题：v0.56 全白字体（原胜者阵营色），随卡片 Q 弹上滑入场
+            Color winCol = Color.white;
             winCol.a *= overAlpha * titleT * cardA;
             float titleY = 296 + (1f - titleT) * 46f;
             DrawLabel(CRect(960, titleY, 1400, 110),
                 GameManager.I.names[overWinner] + " 获胜！", FontOver, winCol, TextAnchor.MiddleCenter);
 
-            // 比分跳数（0.40s 起随跳数进度淡入）：胜者数字用胜者色，大字 FontBanner
+            // 比分跳数（0.40s 起随跳数进度淡入）：v0.56 全白，胜者实色、败者略淡
             float sT = Mathf.Clamp01((overT - 0.40f) / 0.30f);
             float scoreA = (1f - Mathf.Pow(1f - sT, 3f)) * cardA;   // v0.54：easeOutCubic
-            Color c0 = ChipBlue; c0.a *= overAlpha * scoreA;
-            Color c1 = ChipRed; c1.a *= overAlpha * scoreA;
+            Color c0 = Color.white; c0.a *= overAlpha * scoreA;
+            Color c1 = Color.white; c1.a *= overAlpha * scoreA;
             Color colon = Ink; colon.a *= overAlpha * scoreA * 0.6f;
             DrawLabel(CRect(800, 470, 240, 96), shownS0.ToString(), FontBanner,
-                overWinner == 0 ? c0 : new Color(c1.r, c1.g, c1.b, c1.a * 0.85f), TextAnchor.MiddleCenter);
+                overWinner == 0 ? c0 : new Color(c1.r, c1.g, c1.b, c1.a * 0.55f), TextAnchor.MiddleCenter);
             DrawLabel(CRect(960, 470, 100, 96), ":", FontBanner, colon, TextAnchor.MiddleCenter);
             DrawLabel(CRect(1120, 470, 240, 96), shownS1.ToString(), FontBanner,
-                overWinner == 1 ? c1 : new Color(c0.r, c0.g, c0.b, c0.a * 0.85f), TextAnchor.MiddleCenter);
-            // 双方名字（阵营色小字；败者略淡——上面给非胜者数字乘的 0.85 同一逻辑）
-            DrawLabel(CRect(800, 538, 300, 40), GameManager.I.names[0], FontSub, c0, TextAnchor.MiddleCenter);
-            DrawLabel(CRect(1120, 538, 300, 40), GameManager.I.names[1], FontSub, c1, TextAnchor.MiddleCenter);
+                overWinner == 1 ? c1 : new Color(c0.r, c0.g, c0.b, c0.a * 0.55f), TextAnchor.MiddleCenter);
+            // 双方名字（v0.56 全白小字；败者略淡——上面给非胜者数字乘的 0.55 同一逻辑）
+            DrawLabel(CRect(800, 538, 300, 40), GameManager.I.names[0], FontSub,
+                overWinner == 0 ? c0 : new Color(1f, 1f, 1f, c0.a * 0.55f), TextAnchor.MiddleCenter);
+            DrawLabel(CRect(1120, 538, 300, 40), GameManager.I.names[1], FontSub,
+                overWinner == 1 ? c1 : new Color(1f, 1f, 1f, c1.a * 0.55f), TextAnchor.MiddleCenter);
 
             // 最高单杆（0.80s 起淡入，次级灰）
             float mT = Mathf.Clamp01((overT - 0.80f) / 0.35f);
@@ -1278,7 +1302,7 @@ public class UIManager : MonoBehaviour
             DrawLabel(CRect(860 + sox, 635, 110, 72), "◀", FontArrow, inkS, TextAnchor.MiddleCenter);
             DrawLabel(CRect(1290 + sox, 635, 110, 72), "▶", FontArrow, inkS, TextAnchor.MiddleCenter);
 
-            // v0.46：音效开/关（第五行）
+            // v0.46：音效开/关（第五行；v1.0 起只控制胜利号角）
             DrawLabel(CRect(655 + sox, 740, 260, 56), "音效", FontMsg, gray, TextAnchor.MiddleRight);
             DrawLabel(CRect(1075 + sox, 740, 340, 64), GameSettings.SfxText, FontVal, inkS, TextAnchor.MiddleCenter);
             DrawLabel(CRect(860 + sox, 740, 110, 72), "◀", FontArrow, inkS, TextAnchor.MiddleCenter);

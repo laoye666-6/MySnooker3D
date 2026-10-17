@@ -45,6 +45,15 @@ public class BallController : MonoBehaviour
     /// 自旋的可读副本（调试/HUD 用）。
     public Vector3 Spin { get { return spin; } }
 
+    /// <summary>
+    /// v0.56：贴地假阴影四边形（Bootstrapper 创建，PCOL 同款接触阴影）。
+    /// 每帧同步到球正下方的呢面上；球跳起时变淡、落袋下沉后隐藏。
+    /// null = 未启用（资源缺失/离线测试）。
+    /// </summary>
+    public Transform shadowQuad;
+    private MaterialPropertyBlock shadowMPB;
+    private Renderer shadowRend;
+
     // ---------------------------------------------------------------------------------
     // 初始化：缓存刚体引用。
     // Awake 是 Unity 生命周期自动调用；显式暴露 Init() 是为了编辑器离线测试
@@ -55,6 +64,32 @@ public class BallController : MonoBehaviour
     public void Init()
     {
         rb = GetComponent<Rigidbody>();
+    }
+
+    /// <summary>
+    /// v0.56：假阴影跟随（LateUpdate——渲染前贴好位置，避免拖影一帧）。
+    /// alpha 随离地高度衰减：球心 0.026（静置）时 0.85，跳起 8cm 后淡到 0；
+    /// 落袋下沉（y&lt;0）即隐藏。用 MaterialPropertyBlock 写 alpha，
+    /// 避免改 sharedMaterial 影响其它球（22 颗球共用一份影子材质）。
+    /// </summary>
+    void LateUpdate()
+    {
+        if (shadowQuad == null) return;
+        Vector3 p = transform.position;
+        bool visible = !potted && p.y > -0.002f;
+        if (shadowRend == null) shadowRend = shadowQuad.GetComponent<Renderer>();
+        if (!visible)
+        {
+            if (shadowRend.enabled) shadowRend.enabled = false;
+            return;
+        }
+        if (!shadowRend.enabled) shadowRend.enabled = true;
+        shadowQuad.position = new Vector3(p.x, 0.0012f, p.z);
+        float fade = Mathf.Clamp01(1f - (p.y - G.BallR) * 12f);
+        if (shadowMPB == null) shadowMPB = new MaterialPropertyBlock();
+        shadowRend.GetPropertyBlock(shadowMPB);
+        shadowMPB.SetColor("_Color", new Color(0f, 0f, 0f, 0.85f * fade));
+        shadowRend.SetPropertyBlock(shadowMPB);
     }
 
     /// <summary>
@@ -228,30 +263,6 @@ public class BallController : MonoBehaviour
     {
         if (GameManager.I != null) GameManager.I.NotifyContact(this, c.collider);
         CushionSpin(c);                                  // v0.36：侧塞撞库的切向踢出
-        CollisionSfx(c);                                 // v0.46：碰撞音效（球-球 / 球-库）
-    }
-
-    // ---------------------------------------------------------------------------------
-    // v0.46：碰撞音效。撞到球 → Sfx.Ball（清脆 click）；撞到库边/颚部/袋衬/地板
-    // → Sfx.Cush（闷响）。速度取"接触法线方向的相对速度"——掠射轻擦声音小、正撞响亮，
-    // 与真实台球一致。contacts[].normal 的方向符号在各平台有约定歧义（见 CushionSpin
-    // 注释），但音效只取 Dot 的绝对值，符号无影响。
-    // 球-球碰撞双方都会收到 OnCollisionEnter：按实例 ID 只让其中一方出声，防止双响。
-    // 轻触门槛与开球爆堆节流在 Sfx 内部处理。
-    // ---------------------------------------------------------------------------------
-    void CollisionSfx(Collision c)
-    {
-        if (potted) return;
-        var ob = c.collider != null ? c.collider.GetComponentInParent<BallController>() : null;
-        float vn = c.relativeVelocity.magnitude;         // 兜底：无接触点时用全相对速度
-        if (c.contacts != null && c.contacts.Length > 0)
-            vn = Mathf.Abs(Vector3.Dot(c.relativeVelocity, c.contacts[0].normal));
-        if (ob != null && ob != this)
-        {
-            if (GetInstanceID() > ob.GetInstanceID()) return;   // 对方也收到同一次回调，只一方出声
-            Sfx.Ball(vn);
-        }
-        else Sfx.Cush(vn);
     }
 
     // ---------------------------------------------------------------------------------

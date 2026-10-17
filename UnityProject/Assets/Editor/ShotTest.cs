@@ -151,6 +151,14 @@ public class ShotDriver : MonoBehaviour
         yield return Wait(0.7f);
         yield return Shot("06_spin_low");
 
+        // ---- ⑥b v0.57：起立观察（切换 standView，验证俯瞰机位与按钮文字）----
+        var standF = typeof(UIManager).GetMethod("ToggleStand", BindingFlags.NonPublic | BindingFlags.Instance);
+        if (standF != null) standF.Invoke(UI, null);
+        yield return Wait(1.2f);
+        yield return Shot("06b_stand_view");
+        if (standF != null) standF.Invoke(UI, null);        // 切回俯身
+        yield return Wait(0.8f);
+
         // ---- ⑧ 出杆并抓三帧滚动过程（目视验证低杆回拉）----
         gm.Shoot(gm.cueCtl.Dir, 0.7f, -1f, 0f);
         yield return Wait(0.9f);

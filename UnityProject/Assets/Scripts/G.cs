@@ -240,11 +240,12 @@ public static class G
         { BallKind.Yellow, BallKind.Green, BallKind.Brown, BallKind.Blue, BallKind.Pink, BallKind.Black };
 
     // ------------------------------------------------------------------
-    // 五、主要材质颜色（0~1 的 RGB）
+    // 五、主要材质颜色（0~1 的 RGB；v0.56 按 PCOL 反照率校准的"赛事绿/深胡桃"，
+    //     正常路径下 Bootstrapper 用贴图×tint，这些纯色仅作无贴图时的兜底）
     // ------------------------------------------------------------------
-    public static readonly Color ClothCol = new Color(0.10f, 0.47f, 0.22f);     // 台呢：比赛绿
-    public static readonly Color CushionCol = new Color(0.08f, 0.42f, 0.20f);   // 库边：比台呢略深的绿
-    public static readonly Color WoodCol = new Color(0.45f, 0.26f, 0.13f);      // 桌框/桌腿：红棕木色
+    public static readonly Color ClothCol = new Color(0.10f, 0.30f, 0.135f);    // 台呢：赛事深绿
+    public static readonly Color CushionCol = new Color(0.085f, 0.26f, 0.12f);  // 库边：略深的绿
+    public static readonly Color WoodCol = new Color(0.14f, 0.09f, 0.06f);      // 桌框/桌腿：深胡桃
 
     // ------------------------------------------------------------------
     // 六、工具函数
@@ -381,18 +382,22 @@ public static class G
 
     /// 返回球的模型颜色（Bootstrapper 建球时给 Standard 材质上色用）。
     /// RGBA 的 A 恒为 1（不透明）。
+    ///
+    /// v0.56：按 PCOL 的球色校准（其配置是线性空间 Color3，此处已换算回 sRGB）。
+    /// 真实酚醛球比旧版深得多——红球是近枣红的深红、黄球偏琥珀、蓝球是深群青；
+    /// 配合光面材质（roughness 0.12）与反射探针，灯下才像真球而不是塑料玩具。
     public static Color BallColor(BallKind k)
     {
         switch (k)
         {
-            case BallKind.Cue: return new Color(0.93f, 0.93f, 0.88f);   // 白球：米白
-            case BallKind.Red: return new Color(0.72f, 0.06f, 0.05f);   // 红球：深红
-            case BallKind.Yellow: return new Color(0.96f, 0.78f, 0.05f);// 黄球
-            case BallKind.Green: return new Color(0.05f, 0.52f, 0.15f); // 绿球
-            case BallKind.Brown: return new Color(0.45f, 0.22f, 0.07f); // 咖啡球
-            case BallKind.Blue: return new Color(0.08f, 0.26f, 0.85f);  // 蓝球
-            case BallKind.Pink: return new Color(0.95f, 0.45f, 0.62f);  // 粉球
-            case BallKind.Black: return new Color(0.03f, 0.03f, 0.03f); // 黑球
+            case BallKind.Cue: return new Color(0.95f, 0.88f, 0.76f);   // 白球：象牙米白（PCOL 0.8/0.6/0.4 线性；再提一档补偿低机位背光面）
+            case BallKind.Red: return new Color(0.48f, 0.01f, 0.01f);   // 红球：深枣红（0.2 线性）
+            case BallKind.Yellow: return new Color(0.74f, 0.48f, 0.00f);// 黄球：琥珀
+            case BallKind.Green: return new Color(0.00f, 0.27f, 0.14f); // 绿球：深绿
+            case BallKind.Brown: return new Color(0.34f, 0.14f, 0.00f); // 咖啡球
+            case BallKind.Blue: return new Color(0.08f, 0.24f, 0.52f);  // 蓝球：深群青
+            case BallKind.Pink: return new Color(0.76f, 0.31f, 0.35f);  // 粉球：玫瑰粉
+            case BallKind.Black: return new Color(0.02f, 0.02f, 0.02f); // 黑球（留 0.02 让光照塑形）
         }
         return Color.white;
     }
