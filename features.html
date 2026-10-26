@@ -1,0 +1,166 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>特性 · 双人斯诺克 3D</title>
+<meta name="description" content="WPBSA 2024-25 全量规则、自建白球加塞物理、ACES 暗厅灯池、液态玻璃 UI、程序化台球厅——六大特性详解。">
+<meta property="og:title" content="特性 · 双人斯诺克 3D">
+<meta property="og:description" content="不是『像斯诺克』，是斯诺克。六大特性详解。">
+<meta property="og:type" content="website">
+<meta property="og:image" content="assets/og.jpg">
+<link rel="icon" type="image/png" href="assets/favicon.png">
+<link rel="stylesheet" href="assets/css/style.css">
+</head>
+<body>
+
+<nav class="nav" id="nav">
+  <div class="nav-inner">
+    <a class="nav-logo" href="index.html"><img src="assets/img/icon.jpg" alt="MySnooker3D"><b>双人斯诺克 3D</b></a>
+    <div class="nav-links">
+      <a href="index.html">首页</a>
+      <a href="features.html" class="active">特性</a>
+      <a href="nights.html">41 夜</a>
+      <a href="support.html">支持</a>
+    </div>
+    <a class="btn btn-solid nav-cta" href="support.html#download">下载 APK</a>
+  </div>
+</nav>
+
+<div class="page-body">
+<header class="page-hero">
+  <div class="wrap">
+    <p class="kicker reveal">FEATURES</p>
+    <h1 class="reveal d1">不是"像斯诺克"，<br>是<b style="color:var(--accent)">斯诺克</b></h1>
+    <p class="reveal d2">每一项特性都对应一次验收：规则走 65 条断言，物理走四道回归，画面走 ShotTest 十七帧。
+    这一页把六个词展开——它们不是宣传语，是开发记录。</p>
+  </div>
+</header>
+
+<section class="section" style="padding-top:30px">
+  <div class="wrap">
+
+    <div class="feat-row reveal">
+      <div class="feat-img"><img src="assets/img/miss.jpg" alt="Miss 规则三选一" loading="lazy"></div>
+      <div>
+        <h3><small>RULES</small>完整官方规则</h3>
+        <p>规则引擎 <code>SnookerRules.cs</code> 是纯函数：不碰物理、不碰 UI，输入台面状态与一杆事实，输出判罚结果。WPBSA 2024-25 条款全量落地——Miss 三选一（Rule 14(b)）由非犯规方选择、自由球、复位三选一、犯规门禁。</p>
+        <p>65 条断言守着它。任何一次改动，回归不过就不出门。</p>
+      </div>
+    </div>
+
+    <div class="feat-row reveal">
+      <div class="feat-img"><img src="assets/img/pocket.jpg" alt="真实袋口物理" loading="lazy"></div>
+      <div>
+        <h3><small>PHYSICS</small>真实的物理</h3>
+        <p>2ms 可调物理步长、滚动摩擦 0.11、停判阈值 0.09。袋口是 v0.41 起逐步变"真"的：颚弧与鼻线相切、台呢上挖出真洞、晃袋（rattle）、PocketLaunchGuard 钳住袋口弹射。</p>
+        <p>白球加塞不靠物理引擎猜——自建滑移摩擦模型，三条硬约束定死，中杆（spinV=spinH=0）必须与旧版逐帧一致，这是加塞正确性的第一道关。</p>
+      </div>
+    </div>
+
+    <div class="feat-row reveal">
+      <div class="feat-img"><img src="assets/img/aim.jpg" alt="暗厅灯池与俯身机位" loading="lazy"></div>
+      <div>
+        <h3><small>LIGHTING</small>暗厅灯池 × ACES</h3>
+        <p>眼高 0.11m 的俯身机位（参照 PCOL 反编译参数换算）、一键起立俯瞰全台、程序化梯形灯箱吊灯、主桌主光 + 无影补光 + 四壁洗墙，最后过一遍全屏 ACES 调色链。</p>
+        <p>对参考站 PCOL 只复刻技法与参数——一个模型、一张贴图都没有拷。这个项目是 MIT 开源的，法律边界在第一行就写清楚。</p>
+      </div>
+    </div>
+
+    <div class="feat-row reveal">
+      <div class="feat-img"><img src="assets/img/duo.jpg" alt="双人同屏" loading="lazy"></div>
+      <div>
+        <h3><small>LOCAL 2P</small>双人，同屏</h3>
+        <p>一台手机平放在桌上，两个人一人一边。轮流击球、单杆分、剩余红球、147 满分提示、最高单杆、胜利结算动画与号角。</p>
+        <p>没有联机、没有账号、没有广告。它只做一件事：让两个人围着一张 3569×1778mm 的数字球台打完一整局。</p>
+      </div>
+    </div>
+
+    <div class="feat-row reveal">
+      <div class="feat-img"><img src="assets/img/settings.jpg" alt="液态玻璃 UI" loading="lazy"></div>
+      <div>
+        <h3><small>UI</small>液态玻璃</h3>
+        <p>磨砂玻璃面板、边缘拉丝、Q 弹动画、全白字体。玻璃不是贴图——是零贴图顶点网格直接画出来的，因为"运行时创建的 UI 贴图在真机上不可靠"（踩坑 #4）。</p>
+        <p>绿色闪烁、黑色圆角阴影、轮廓幽灵——这三个 bug 各自写进了踩坑清单，也都死在了 v0.56。</p>
+      </div>
+    </div>
+
+    <div class="feat-row reveal" style="border-bottom:none">
+      <div class="feat-img"><img src="assets/img/hall.jpg" alt="台球厅环境" loading="lazy"></div>
+      <div>
+        <h3><small>ENVIRONMENT</small>一间球厅</h3>
+        <p>三张球台、PCOL 式吊灯、墙裙、记分牌、挂钟、海报、球杆架、座椅、盆栽——全部程序化生成，没有一件外部资产。</p>
+        <p>整个游戏只有一条音效：胜利号角。它只需要在赢的时候响。</p>
+      </div>
+    </div>
+
+  </div>
+</section>
+
+<div class="cta-band">
+  <div class="wrap cta-band-inner">
+    <h2 class="reveal">纸上的特性，不如手里的一局</h2>
+    <div class="reveal d1" style="margin-top:26px">
+      <a class="btn btn-solid" href="https://github.com/laoye666-6/MySnooker3D/releases/download/v1.0/Snooker3D.apk" target="_blank" rel="noopener">下载 APK v1.0 · 79.5 MB</a>
+      <a class="btn btn-ghost" href="nights.html">看看它怎么被做出来 →</a>
+    </div>
+  </div>
+</div>
+</div>
+
+<footer class="foot-v2">
+  <div class="wrap">
+    <div class="foot-grid">
+      <div class="foot-col foot-about">
+        <div class="foot-brand">
+          <img src="assets/img/icon.jpg" alt="">
+          <div><b>双人斯诺克 3D</b><span>MIT License · Snooker Lab</span></div>
+        </div>
+        <p>标准斯诺克规则、真实物理、暗厅灯池。一台手机，两个人，轮流击球。</p>
+      </div>
+      <div class="foot-col">
+        <h4>产品</h4>
+        <a href="support.html#download">下载 APK</a>
+        <a href="features.html">特性</a>
+        <a href="https://github.com/laoye666-6/MySnooker3D/releases" target="_blank" rel="noopener">全部版本</a>
+      </div>
+      <div class="foot-col">
+        <h4>开发</h4>
+        <a href="https://github.com/laoye666-6/MySnooker3D" target="_blank" rel="noopener">GitHub 源码</a>
+        <a href="https://github.com/laoye666-6/MySnooker3D/issues" target="_blank" rel="noopener">问题反馈</a>
+        <a href="nights.html">《41 夜》开发志</a>
+      </div>
+      <div class="foot-col">
+        <h4>关于</h4>
+        <a href="support.html">支持 / FAQ</a>
+        <a href="nights.html">第二夜 · 2026.10.26</a>
+      </div>
+    </div>
+    <div class="foot-base">
+      <span>© 2026 laoye666-6 · Snooker Lab</span>
+      <span class="sep">·</span>
+      <span>本站图片与数据取自项目仓库</span>
+      <span class="hint147">据说，在这个站敲下 147，会听到号角。</span>
+    </div>
+  </div>
+</footer>
+
+<button class="totop" id="totop" aria-label="返回顶部">
+  <svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true"><path fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" d="m6 14 6-6 6 6"/></svg>
+</button>
+
+<div class="egg" id="egg" hidden>
+  <div class="egg-balls" id="egg-balls"></div>
+  <div class="egg-center">
+    <div class="egg-count num" id="egg-count">0</div>
+    <div class="egg-title">MAXIMUM&nbsp;BREAK</div>
+    <div class="egg-sub">147 · 满分杆 · 一颗红球一颗黑的十五个来回</div>
+    <button class="btn btn-ghost" id="egg-close" type="button">收起</button>
+  </div>
+</div>
+
+<script src="assets/js/timeline.js"></script>
+<script src="assets/js/horn.js"></script>
+<script src="assets/js/main.js"></script>
+</body>
+</html>

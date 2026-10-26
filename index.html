@@ -1,0 +1,310 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>双人斯诺克 3D · MySnooker3D — 41 夜，从第一行代码到 v1.0</title>
+<meta name="description" content="完整 WPBSA 规则 · 真实物理 · 暗厅灯池 · ACES 影调。一台手机，两个人，轮流击球。一个 2026 年 9 月才开始学编程的开发者，用 41 个夜晚做出来的安卓双人斯诺克游戏。MIT 开源。">
+<meta property="og:title" content="双人斯诺克 3D · MySnooker3D">
+<meta property="og:description" content="完整 WPBSA 规则 · 真实物理 · 暗厅灯池。2026.09.07 开始学编程，2026.10.18 v1.0 发布——中间是 41 个夜晚。">
+<meta property="og:type" content="website">
+<meta property="og:image" content="assets/og.jpg">
+<link rel="icon" type="image/png" href="assets/favicon.png">
+<link rel="stylesheet" href="assets/css/style.css">
+</head>
+<body>
+
+<!-- 导航 -->
+<nav class="nav" id="nav">
+  <div class="nav-inner">
+    <a class="nav-logo" href="index.html"><img src="assets/img/icon.jpg" alt="MySnooker3D"><b>双人斯诺克 3D</b></a>
+    <div class="nav-links">
+      <a href="index.html" class="active">首页</a>
+      <a href="features.html">特性</a>
+      <a href="nights.html">41 夜</a>
+      <a href="support.html">支持</a>
+    </div>
+    <a class="btn btn-solid nav-cta" href="support.html#download">下载 APK</a>
+  </div>
+</nav>
+
+<!-- ═══════════════ HERO ═══════════════ -->
+<header class="hero" id="top">
+  <div class="hero-bg" role="img" aria-label="暗厅灯池下的斯诺克球台"></div>
+  <div class="hero-veil"></div>
+  <div class="hero-lamp"></div>
+
+  <div class="hero-inner">
+    <div class="hero-brand reveal">
+      <img src="assets/img/icon.jpg" alt="MySnooker3D 图标" class="brand-icon">
+      <div class="brand-text">
+        <span class="brand-name">SNOOKER&nbsp;LAB</span>
+        <span class="brand-ver">v1.0 · 第 58 次迭代</span>
+      </div>
+    </div>
+
+    <h1 class="hero-title reveal d1">双人斯诺克<span class="thin">3D</span></h1>
+    <p class="hero-sub reveal d2">完整 WPBSA 规则&nbsp;·&nbsp;真实物理&nbsp;·&nbsp;暗厅灯池&nbsp;·&nbsp;ACES 影调</p>
+
+    <p class="hero-story reveal d3">
+      2026.09.07 开始学编程 —— 2026.10.18 v1.0 发布。<br>
+      中间，是 <b class="num">41</b> 个夜晚。
+    </p>
+
+    <div class="hero-cta reveal d4">
+      <a class="btn btn-solid" href="https://github.com/laoye666-6/MySnooker3D/releases/download/v1.0/Snooker3D.apk" target="_blank" rel="noopener">
+        <svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><path fill="currentColor" d="M12 3v10.6l3.8-3.8 1.4 1.4L12 16.4l-5.2-5.2 1.4-1.4 3.8 3.8V3h0ZM5 19h14v2H5v-2Z"/></svg>
+        下载 APK&nbsp;<span class="btn-dim">79.5 MB</span>
+      </a>
+      <a class="btn btn-ghost" href="https://github.com/laoye666-6/MySnooker3D" target="_blank" rel="noopener">
+        <svg viewBox="0 0 16 16" width="17" height="17" aria-hidden="true"><path fill="currentColor" d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27s1.36.09 2 .27c1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.01 8.01 0 0 0 16 8c0-4.42-3.58-8-8-8Z"/></svg>
+        GitHub
+      </a>
+      <button class="btn btn-ghost" id="btn-trailer" type="button">
+        <svg viewBox="0 0 24 24" width="17" height="17" aria-hidden="true"><path fill="currentColor" d="M8 5v14l11-7L8 5Z"/></svg>
+        看预告片
+      </button>
+    </div>
+
+    <div class="badges reveal d4">
+      <span class="badge"><svg viewBox="0 0 24 24" width="14" height="14"><path fill="currentColor" d="M17.6 9.48l1.84-3.18c.16-.31.04-.7-.26-.85-.29-.15-.65-.06-.83.22l-1.88 3.24a11.43 11.43 0 0 0-8.94 0L5.65 5.67c-.19-.29-.58-.38-.87-.2-.28.18-.37.54-.22.83L6.4 9.48A10.81 10.81 0 0 0 1 18h22a10.81 10.81 0 0 0-5.4-8.52M7 15.25a1.25 1.25 0 1 1 0-2.5 1.25 1.25 0 0 1 0 2.5m10 0a1.25 1.25 0 1 1 0-2.5 1.25 1.25 0 0 1 0 2.5"/></svg>Android 7.0+</span>
+      <span class="badge"><svg viewBox="0 0 24 24" width="14" height="14"><path fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" d="M3 3l18 18M8.5 16.5a5 5 0 0 1 7 0M5 13a9.5 9.5 0 0 1 4-2.4M19 13a9.5 9.5 0 0 0-4-2.4M12 19.5h.01"/></svg>单机 · 无需联网</span>
+      <span class="badge"><svg viewBox="0 0 24 24" width="14" height="14"><path fill="currentColor" d="M9.5 3v6.5H3V3h6.5Zm0 11.5V21H3v-6.5h6.5ZM21 3v6.5h-6.5V3H21Zm0 11.5V21h-6.5v-6.5H21Z"/></svg>双架构 IL2CPP</span>
+      <span class="badge"><svg viewBox="0 0 24 24" width="14" height="14"><path fill="currentColor" d="M12 2 4 6v6c0 5 3.4 9.4 8 10 4.6-.6 8-5 8-10V6l-8-4Zm-1.2 13.5-2.8-2.8 1.4-1.4 1.4 1.4 4.2-4.2 1.4 1.4-5.6 5.6Z"/></svg>MIT 开源</span>
+    </div>
+
+    <dl class="hero-stats reveal d5">
+      <div><dt class="num">41</dt><dd>天</dd></div>
+      <div><dt class="num">58</dt><dd>次迭代</dd></div>
+      <div><dt class="num">65</dt><dd>条规则断言</dd></div>
+      <div><dt class="num">29</dt><dd>次提交</dd></div>
+      <div><dt class="num">2</dt><dd>人同屏</dd></div>
+    </dl>
+  </div>
+
+  <a class="scroll-cue" href="#trailer" aria-label="向下滚动">
+    <svg viewBox="0 0 24 24" width="26" height="26" aria-hidden="true"><path fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" d="m5 9 7 7 7-7"/></svg>
+  </a>
+</header>
+
+<main>
+
+<!-- ═══════════════ 预告片 ═══════════════ -->
+<section class="section" id="trailer">
+  <div class="wrap">
+    <p class="kicker reveal">CINEMATIC</p>
+    <h2 class="reveal">五十八秒，走进那间球厅</h2>
+    <div class="stage-outer reveal d1">
+      <div class="stage" id="stage">
+        <div class="stage-poster" id="stage-poster">
+          <img src="assets/img/wide.jpg" alt="预告片封面：暗厅中的球台" draggable="false">
+          <button class="stage-play" id="stage-play" type="button" aria-label="播放预告片">
+            <svg viewBox="0 0 24 24" width="30" height="30" aria-hidden="true"><path fill="currentColor" d="M8 5v14l11-7L8 5Z"/></svg>
+          </button>
+          <span class="stage-dur">00:58</span>
+        </div>
+        <div class="stage-screen" id="stage-screen" hidden>
+          <div class="frame" id="frame"><img id="frame-img" alt="" draggable="false"></div>
+          <div class="frame-cap"><span id="frame-kicker"></span><span id="frame-title"></span></div>
+          <div class="stage-bar"><i id="stage-progress"></i></div>
+          <button class="stage-skip" id="stage-skip" type="button">跳过</button>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ═══════════════ 特性 ═══════════════ -->
+<section class="section alt" id="features">
+  <div class="wrap">
+    <p class="kicker reveal">FEATURES</p>
+    <h2 class="reveal">不是"像斯诺克"，<br>是<b>斯诺克</b></h2>
+
+    <div class="bento">
+      <article class="card reveal">
+        <div class="card-img"><img src="assets/img/miss.jpg" alt="Miss 规则三选一弹窗" loading="lazy"></div>
+        <h3>完整官方规则</h3>
+        <p>WPBSA 2024-25 全量实现：Miss 三选一（Rule 14(b)）、自由球、复位选项、犯规门禁。
+        65 条纯函数断言守住每一次改动。</p>
+      </article>
+
+      <article class="card reveal d1">
+        <div class="card-img"><img src="assets/img/pocket.jpg" alt="真实袋口：弧形颚板与真洞" loading="lazy"></div>
+        <h3>真实的物理</h3>
+        <p>2ms 物理步长、滚动摩擦、晃袋（rattle）、皮革颚板与蜂窝网兜。
+        白球加塞不靠引擎猜——自建滑移摩擦模型，中杆必须与旧版逐帧一致。</p>
+      </article>
+
+      <article class="card reveal d2">
+        <div class="card-img"><img src="assets/img/aim.jpg" alt="俯身瞄准视角与辅助线" loading="lazy"></div>
+        <h3>暗厅灯池 × ACES</h3>
+        <p>眼高 0.11m 的俯身机位、一键起立观察、程序化吊灯、全屏 ACES 调色。
+        布光语言向 PCOL 追平——只复刻技法，零素材拷贝。</p>
+      </article>
+
+      <article class="card reveal">
+        <div class="card-img"><img src="assets/img/duo.jpg" alt="双人同屏轮流击球" loading="lazy"></div>
+        <h3>双人，同屏</h3>
+        <p>一台手机，轮流击球。单杆分、剩余红球、147 提示、最高单杆、
+        胜利结算——都为两个人盯着同一块屏幕而设计。</p>
+      </article>
+
+      <article class="card reveal d1">
+        <div class="card-img"><img src="assets/img/settings.jpg" alt="液态玻璃设置面板" loading="lazy"></div>
+        <h3>液态玻璃 UI</h3>
+        <p>磨砂玻璃、Q 弹动画、全白字体。零贴图顶点网格直接画出来——
+        因为"运行时创建的 UI 贴图在真机上不可靠"（踩坑 #4）。</p>
+      </article>
+
+      <article class="card reveal d2">
+        <div class="card-img"><img src="assets/img/hall.jpg" alt="台球厅环境" loading="lazy"></div>
+        <h3>一间球厅</h3>
+        <p>三张球台、吊灯、墙裙、记分牌、挂钟、座椅、盆栽。
+        全部程序化生成。整个游戏只有一条音效：胜利号角——
+        它只需要在赢的时候响。</p>
+      </article>
+    </div>
+
+    <p class="news-more reveal"><a href="features.html">展开阅读六大特性 →</a></p>
+  </div>
+</section>
+
+<!-- ═══════════════ 媒体 ═══════════════ -->
+<section class="section" id="gallery">
+  <div class="wrap">
+    <p class="kicker reveal">MEDIA</p>
+    <h2 class="reveal">媒体</h2>
+    <p class="nights-lede reveal d1">点击放大。全部为开发期实机截图，未加修饰。</p>
+
+    <div class="gallery reveal d1">
+      <figure class="shot" data-cap="全景机位 · 暗厅灯池"><img src="assets/img/wide.jpg" alt="全景机位" loading="lazy"><span>全景机位 · 暗厅灯池</span></figure>
+      <figure class="shot" data-cap="俯身瞄准 · 眼高 0.11m"><img src="assets/img/aim.jpg" alt="俯身瞄准" loading="lazy"><span>俯身瞄准 · 眼高 0.11m</span></figure>
+      <figure class="shot" data-cap="真实袋口 · 弧形颚板"><img src="assets/img/pocket.jpg" alt="真实袋口" loading="lazy"><span>真实袋口 · 弧形颚板</span></figure>
+      <figure class="shot" data-cap="球在手 · 开球区 D 自由摆放"><img src="assets/img/hand.jpg" alt="球在手" loading="lazy"><span>球在手 · 开球区 D 自由摆放</span></figure>
+      <figure class="shot" data-cap="Miss 三选一 · Rule 14(b)"><img src="assets/img/miss.jpg" alt="Miss 三选一" loading="lazy"><span>Miss 三选一 · Rule 14(b)</span></figure>
+      <figure class="shot" data-cap="液态玻璃设置面板"><img src="assets/img/settings.jpg" alt="液态玻璃设置" loading="lazy"><span>液态玻璃设置面板</span></figure>
+      <figure class="shot" data-cap="胜利结算 · 彩纸与号角"><img src="assets/img/win.jpg" alt="胜利结算" loading="lazy"><span>胜利结算 · 彩纸与号角</span></figure>
+      <figure class="shot" data-cap="台球厅 · 三桌与吊灯"><img src="assets/img/hall.jpg" alt="台球厅" loading="lazy"><span>台球厅 · 三桌与吊灯</span></figure>
+    </div>
+  </div>
+</section>
+
+<!-- ═══════════════ 版本动态 ═══════════════ -->
+<section class="section alt" id="news">
+  <div class="wrap">
+    <p class="kicker reveal">NEWS</p>
+    <h2 class="reveal">版本动态</h2>
+
+    <div class="news">
+      <a class="news-card reveal" href="https://github.com/laoye666-6/MySnooker3D/releases/tag/v1.0" target="_blank" rel="noopener">
+        <div class="news-head"><span class="news-tag latest">v1.0</span><span class="news-date">2026.10.18</span></div>
+        <h3>首个正式版发布</h3>
+        <p>第 58 次迭代：删去全部碰撞音效，只留胜利号角；修复两处只在真机上出现的渲染 bug；五道回归全绿。</p>
+      </a>
+      <a class="news-card reveal d1" href="https://github.com/laoye666-6/MySnooker3D/releases/tag/v0.55" target="_blank" rel="noopener">
+        <div class="news-head"><span class="news-tag">v0.55</span><span class="news-date">2026.10.06</span></div>
+        <h3>袋口按实拍重建</h3>
+        <p>皮革颚板、蜂窝网兜、更宽的颚弧——对着真实斯诺克袋口照片，把六只袋口全部重做了一遍。</p>
+      </a>
+      <a class="news-card reveal" href="https://github.com/laoye666-6/MySnooker3D/releases/tag/v0.50" target="_blank" rel="noopener">
+        <div class="news-head"><span class="news-tag">v0.50</span><span class="news-date">2026.10.02</span></div>
+        <h3>台球厅落成</h3>
+        <p>一天四次提交：Blender 建成三桌球厅，吊灯亮起。游戏第一次有了"地方"，而不只是一张桌子。</p>
+      </a>
+      <a class="news-card reveal d1" href="https://github.com/laoye666-6/MySnooker3D/releases/tag/v0.45" target="_blank" rel="noopener">
+        <div class="news-head"><span class="news-tag">v0.45</span><span class="news-date">2026.09.29</span></div>
+        <h3>液态玻璃 UI 全面重做</h3>
+        <p>磨砂玻璃、全白字体、Q 弹动画；同版加入犯规选择权门禁（Rule 14(b)/13）。</p>
+      </a>
+    </div>
+
+    <p class="news-more reveal"><a href="https://github.com/laoye666-6/MySnooker3D/releases" target="_blank" rel="noopener">全部版本与更新日志 →</a></p>
+  </div>
+</section>
+
+<!-- ═══════════════ 41 夜导流 ═══════════════ -->
+<section class="section nights" id="nights" style="padding-bottom:0">
+  <div class="wrap" style="text-align:center">
+    <p class="kicker reveal">DEV DIARY</p>
+    <h2 class="reveal">《41 夜》</h2>
+    <p class="nights-lede reveal d1" style="margin-left:auto;margin-right:auto">
+      git 里只有 29 次提交，其中 5 次落在凌晨 0 点到 7 点；<br>还有更多夜晚，连时间戳都没有留下。
+    </p>
+    <p class="reveal d2" style="margin-top:28px">
+      <a class="btn btn-ghost" href="nights.html">读一读这 41 个夜晚 →</a>
+    </p>
+  </div>
+</section>
+
+<!-- ═══════════════ CTA ═══════════════ -->
+<div class="cta-band" id="download">
+  <div class="wrap cta-band-inner">
+    <h2 class="reveal">把球台摆上桌</h2>
+    <p class="reveal d1">免费 · 无广告 · 无内购 · 不需要联网</p>
+    <div class="reveal d2">
+      <a class="btn btn-solid" href="https://github.com/laoye666-6/MySnooker3D/releases/download/v1.0/Snooker3D.apk" target="_blank" rel="noopener">下载 APK v1.0 · 79.5 MB</a>
+      <a class="btn btn-ghost" href="support.html">安装说明与支持</a>
+    </div>
+  </div>
+</div>
+
+</main>
+
+<!-- 页脚 -->
+<footer class="foot-v2">
+  <div class="wrap">
+    <div class="foot-grid">
+      <div class="foot-col foot-about">
+        <div class="foot-brand">
+          <img src="assets/img/icon.jpg" alt="">
+          <div><b>双人斯诺克 3D</b><span>MIT License · Snooker Lab</span></div>
+        </div>
+        <p>标准斯诺克规则、真实物理、暗厅灯池。一台手机，两个人，轮流击球。</p>
+      </div>
+      <div class="foot-col">
+        <h4>产品</h4>
+        <a href="support.html#download">下载 APK</a>
+        <a href="features.html">特性</a>
+        <a href="https://github.com/laoye666-6/MySnooker3D/releases" target="_blank" rel="noopener">全部版本</a>
+      </div>
+      <div class="foot-col">
+        <h4>开发</h4>
+        <a href="https://github.com/laoye666-6/MySnooker3D" target="_blank" rel="noopener">GitHub 源码</a>
+        <a href="https://github.com/laoye666-6/MySnooker3D/issues" target="_blank" rel="noopener">问题反馈</a>
+        <a href="nights.html">《41 夜》开发志</a>
+      </div>
+      <div class="foot-col">
+        <h4>关于</h4>
+        <a href="support.html">支持 / FAQ</a>
+        <a href="nights.html">第二夜 · 2026.10.26</a>
+      </div>
+    </div>
+    <div class="foot-base">
+      <span>© 2026 laoye666-6 · Snooker Lab</span>
+      <span class="sep">·</span>
+      <span>本站图片与数据取自项目仓库</span>
+      <span class="hint147">据说，在这个站敲下 147，会听到号角。</span>
+    </div>
+  </div>
+</footer>
+
+<button class="totop" id="totop" aria-label="返回顶部">
+  <svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true"><path fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" d="m6 14 6-6 6 6"/></svg>
+</button>
+
+<!-- 147 彩蛋 -->
+<div class="egg" id="egg" hidden>
+  <div class="egg-balls" id="egg-balls"></div>
+  <div class="egg-center">
+    <div class="egg-count num" id="egg-count">0</div>
+    <div class="egg-title">MAXIMUM&nbsp;BREAK</div>
+    <div class="egg-sub">147 · 满分杆 · 一颗红球一颗黑的十五个来回</div>
+    <button class="btn btn-ghost" id="egg-close" type="button">收起</button>
+  </div>
+</div>
+
+<script src="assets/js/timeline.js"></script>
+<script src="assets/js/horn.js"></script>
+<script src="assets/js/main.js"></script>
+</body>
+</html>

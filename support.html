@@ -1,0 +1,163 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>下载与支持 · 双人斯诺克 3D</title>
+<meta name="description" content="下载 APK v1.0（79.5MB，Android 7.0+），安装三步走；配置要求与常见问题。免费 · 无广告 · 无需联网。">
+<meta property="og:title" content="下载与支持 · 双人斯诺克 3D">
+<meta property="og:description" content="APK v1.0 · Android 7.0+ · 79.5MB。安装三步走 + 常见问题。">
+<meta property="og:type" content="website">
+<meta property="og:image" content="assets/og.jpg">
+<link rel="icon" type="image/png" href="assets/favicon.png">
+<link rel="stylesheet" href="assets/css/style.css">
+</head>
+<body>
+
+<nav class="nav" id="nav">
+  <div class="nav-inner">
+    <a class="nav-logo" href="index.html"><img src="assets/img/icon.jpg" alt="MySnooker3D"><b>双人斯诺克 3D</b></a>
+    <div class="nav-links">
+      <a href="index.html">首页</a>
+      <a href="features.html">特性</a>
+      <a href="nights.html">41 夜</a>
+      <a href="support.html" class="active">支持</a>
+    </div>
+    <a class="btn btn-solid nav-cta" href="#download">下载 APK</a>
+  </div>
+</nav>
+
+<div class="page-body">
+<header class="page-hero">
+  <div class="wrap">
+    <p class="kicker reveal">DOWNLOAD &amp; SUPPORT</p>
+    <h1 class="reveal d1">开一局</h1>
+    <p class="reveal d2">免费 · 无广告 · 无内购 · 不需要联网。遇到问题先看下面的 FAQ，再不行就去 GitHub Issues 提一条。</p>
+  </div>
+</header>
+
+<section class="section" id="download" style="padding-top:56px">
+  <div class="wrap wrap-narrow">
+
+    <div class="dl-card reveal">
+      <img src="assets/img/icon.jpg" alt="" class="dl-icon">
+      <div class="dl-main">
+        <b>双人斯诺克 3D <span class="chip">v1.0</span></b>
+        <span class="dl-meta">Android 7.0+ · 双架构 IL2CPP · 79.5 MB · MIT License</span>
+      </div>
+      <a class="btn btn-solid" href="https://github.com/laoye666-6/MySnooker3D/releases/download/v1.0/Snooker3D.apk" target="_blank" rel="noopener">下载 APK</a>
+    </div>
+
+    <ol class="dl-steps reveal d1">
+      <li><b>1</b> 点击下载（也可到 <a href="https://github.com/laoye666-6/MySnooker3D/releases" target="_blank" rel="noopener">GitHub Releases</a> 自选历史版本）</li>
+      <li><b>2</b> 安装时允许"安装未知来源应用"（系统安全提示，属正常流程）</li>
+      <li><b>3</b> 打开，把手机平放在桌上，两个人一人一半</li>
+    </ol>
+
+    <h2 class="reveal" style="margin-top:74px;font-size:26px">配置要求</h2>
+    <table class="spec-table reveal d1">
+      <tr><th>操作系统</th><td>Android 7.0（API 24）及以上</td></tr>
+      <tr><th>CPU 架构</th><td>arm64-v8a / x86_64（双架构 IL2CPP，模拟器也可用）</td></tr>
+      <tr><th>存储空间</th><td>约 80 MB（安装包 79.5 MB）</td></tr>
+      <tr><th>网络</th><td>不需要。本地单机游戏，无任何联网功能</td></tr>
+      <tr><th>其他</th><td>玻璃 UI 的最终显示效果以真机为准（模拟器对磨砂玻璃的渲染不完整）</td></tr>
+    </table>
+
+    <h2 class="reveal" style="margin-top:74px;font-size:26px">常见问题</h2>
+    <div class="faq reveal d1">
+      <details>
+        <summary>游戏是免费的吗？会不会有广告？</summary>
+        <div class="faq-a">免费、无广告、无内购。项目以 <a href="https://github.com/laoye666-6/MySnooker3D" target="_blank" rel="noopener">MIT 协议开源</a>，APK 从 GitHub Releases 直接下载，没有第三方分发渠道。</div>
+      </details>
+      <details>
+        <summary>支持联机对战吗？</summary>
+        <div class="faq-a">不支持，以后也未必会加。它的设计起点就是"一台手机、两个人、同屏轮流击球"——像真的站在同一张球台两侧。</div>
+      </details>
+      <details>
+        <summary>有 iOS 版吗？</summary>
+        <div class="faq-a">目前没有。项目基于 Unity，理论上可以跨平台，但开发者只有 Android 真机与调试环境，暂无 iOS 计划。</div>
+      </details>
+      <details>
+        <summary>规则真的完整吗？</summary>
+        <div class="faq-a">WPBSA 2024-25 全量实现，含 Miss 三选一、自由球、复位选项，由 65 条纯函数断言回归保护。已知未实现：Miss 累计三次判负、自由球裁判裁量——这些在仓库文档的"诚实差距清单"里有记录。</div>
+      </details>
+      <details>
+        <summary>为什么模拟器里玻璃界面看起来不对？</summary>
+        <div class="faq-a">磨砂玻璃在部分模拟器（如 GLES3 环境）渲染不完整，这是已知限制。验收环境是编辑器 + 真机——用真机看，它是对的。</div>
+      </details>
+      <details>
+        <summary>怎么参与开发或反馈问题？</summary>
+        <div class="faq-a">源码、构建指南与踩坑文档都在 <a href="https://github.com/laoye666-6/MySnooker3D" target="_blank" rel="noopener">GitHub 仓库</a>；bug 与建议请提到 <a href="https://github.com/laoye666-6/MySnooker3D/issues" target="_blank" rel="noopener">Issues</a>。MIT 协议，欢迎 fork。</div>
+      </details>
+    </div>
+
+  </div>
+</section>
+
+<div class="cta-band">
+  <div class="wrap cta-band-inner">
+    <h2 class="reveal">桌已摆好，就差你了</h2>
+    <div class="reveal d1" style="margin-top:26px">
+      <a class="btn btn-solid" href="https://github.com/laoye666-6/MySnooker3D/releases/download/v1.0/Snooker3D.apk" target="_blank" rel="noopener">下载 APK v1.0 · 79.5 MB</a>
+      <a class="btn btn-ghost" href="nights.html">读《41 夜》开发志 →</a>
+    </div>
+  </div>
+</div>
+</div>
+
+<footer class="foot-v2">
+  <div class="wrap">
+    <div class="foot-grid">
+      <div class="foot-col foot-about">
+        <div class="foot-brand">
+          <img src="assets/img/icon.jpg" alt="">
+          <div><b>双人斯诺克 3D</b><span>MIT License · Snooker Lab</span></div>
+        </div>
+        <p>标准斯诺克规则、真实物理、暗厅灯池。一台手机，两个人，轮流击球。</p>
+      </div>
+      <div class="foot-col">
+        <h4>产品</h4>
+        <a href="support.html#download">下载 APK</a>
+        <a href="features.html">特性</a>
+        <a href="https://github.com/laoye666-6/MySnooker3D/releases" target="_blank" rel="noopener">全部版本</a>
+      </div>
+      <div class="foot-col">
+        <h4>开发</h4>
+        <a href="https://github.com/laoye666-6/MySnooker3D" target="_blank" rel="noopener">GitHub 源码</a>
+        <a href="https://github.com/laoye666-6/MySnooker3D/issues" target="_blank" rel="noopener">问题反馈</a>
+        <a href="nights.html">《41 夜》开发志</a>
+      </div>
+      <div class="foot-col">
+        <h4>关于</h4>
+        <a href="support.html">支持 / FAQ</a>
+        <a href="nights.html">第二夜 · 2026.10.26</a>
+      </div>
+    </div>
+    <div class="foot-base">
+      <span>© 2026 laoye666-6 · Snooker Lab</span>
+      <span class="sep">·</span>
+      <span>本站图片与数据取自项目仓库</span>
+      <span class="hint147">据说，在这个站敲下 147，会听到号角。</span>
+    </div>
+  </div>
+</footer>
+
+<button class="totop" id="totop" aria-label="返回顶部">
+  <svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true"><path fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" d="m6 14 6-6 6 6"/></svg>
+</button>
+
+<div class="egg" id="egg" hidden>
+  <div class="egg-balls" id="egg-balls"></div>
+  <div class="egg-center">
+    <div class="egg-count num" id="egg-count">0</div>
+    <div class="egg-title">MAXIMUM&nbsp;BREAK</div>
+    <div class="egg-sub">147 · 满分杆 · 一颗红球一颗黑的十五个来回</div>
+    <button class="btn btn-ghost" id="egg-close" type="button">收起</button>
+  </div>
+</div>
+
+<script src="assets/js/timeline.js"></script>
+<script src="assets/js/horn.js"></script>
+<script src="assets/js/main.js"></script>
+</body>
+</html>
